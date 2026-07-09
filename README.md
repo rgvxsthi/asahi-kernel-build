@@ -14,7 +14,7 @@ Apple Silicon MacBooks (M1/M2) running Asahi Linux cannot output to external dis
 | MacBook Air M2 | ✅ Tested and working |
 | MacBook Pro M1 Pro | Tested by community |
 | MacBook Pro M1 Max | Untested (should work) |
-| MacBook Pro M2 Pro/Max | Untested (should work) |
+| MacBook Pro M2 Pro/Max | ✅ Tested and working |
 | Mac Mini M1/M2 (HDMI) | Already supported in stable kernel |
 
 ## Requirements
