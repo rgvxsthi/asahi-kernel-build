@@ -509,7 +509,7 @@ main() {
     update_m1n1
     update_grub
     setup_modules
-    setup_display_script
+    # setup_display_script  # disabled: causes login loop on KDE/Wayland sessions. X11 users can call manually.
     print_summary
 }
 
