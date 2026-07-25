@@ -38,6 +38,14 @@
 
 set -eo pipefail
 
+# Resolve this script's directory ONCE, here, before anything changes
+# directory. ${BASH_SOURCE[0]} is whatever path was used to invoke the script,
+# so for the usual ./asahi-fairydust-build.sh it is relative. Resolving it
+# later, after clone_source has cd'd into the kernel tree, silently produced
+# the kernel tree instead, so patches/ was never found and the build completed
+# reporting success with none of the patches applied.
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 # --- Configuration ---
 # Overridable from the environment, e.g. BRANCH=my-branch ./asahi-fairydust-build.sh
 REPO_URL="${REPO_URL:-https://github.com/AsahiLinux/linux.git}"
@@ -413,9 +421,8 @@ patch_audience() {
 #                         these, without prompting
 #   ASSUME_YES=1          apply everything without prompting
 apply_patches() {
-    local script_dir patch_dir
-    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-    patch_dir="$script_dir/patches"
+    local patch_dir
+    patch_dir="$SCRIPT_DIR/patches"
 
     if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
         info "SKIP_PATCHES is set, building the branch as-is"
@@ -871,10 +878,9 @@ refresh_fairydust_patch() {
 # entirely. The PKGBUILD pins its own upstream tag and Arch's packaging handles
 # the install, which is more reliable than anything reimplemented here.
 alarm_build() {
-    local script_dir patch_dir pkgdir chosen p name subject audience want wanted
+    local patch_dir pkgdir chosen p name subject audience want wanted
 
-    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-    patch_dir="$script_dir/patches"
+    patch_dir="$SCRIPT_DIR/patches"
     pkgdir="${ALARM_PKGBUILDS_DIR:-$HOME/PKGBUILDs}"
 
     echo ""
