@@ -68,6 +68,12 @@ log_and_run() {
 }
 
 confirm() {
+    # ASSUME_YES lets the build run unattended. NO_REBOOT is handled separately
+    # so that an unattended run never reboots the machine by itself.
+    if [[ "${ASSUME_YES:-0}" == "1" ]]; then
+        info "$1 [auto-yes]"
+        return 0
+    fi
     read -rp "$(echo -e "${YELLOW}$1 [y/N]:${NC} ")" response
     [[ "$response" =~ ^[Yy]$ ]]
 }
@@ -512,7 +518,9 @@ print_summary() {
     echo "============================================================"
     echo ""
 
-    if confirm "Reboot now?"; then
+    if [[ "${NO_REBOOT:-0}" == "1" ]]; then
+        info "NO_REBOOT is set. Reboot when ready with: sudo reboot"
+    elif confirm "Reboot now?"; then
         sudo reboot
     else
         info "Reboot when ready with: sudo reboot"
