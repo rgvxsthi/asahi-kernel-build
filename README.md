@@ -114,7 +114,7 @@ Everything is environment-overridable:
 | Variable | Default | Purpose |
 |---|---|---|
 | `REPO_URL` | `https://github.com/AsahiLinux/linux.git` | Kernel source |
-| `BRANCH` | *(asks, default `asahi`)* | Branch to build; set it to skip the menu |
+| `BRANCH` | *(asks, default `fairydust`)* | Branch to build; set it to skip the menu |
 | `CLONE_DIR` | `$HOME/linux-fairydust` | Where to clone |
 | `LOCALVERSION` | `-hdmifix` | Kernel name suffix / GRUB entry |
 | `JOBS` | `$(nproc)` | Parallel build jobs |
@@ -163,27 +163,27 @@ On startup it asks which branch you want:
 
 | | Branch | Version | What it is |
 |---|---|---|---|
-| 1 | `asahi` *(default)* | 7.0.13 | The main Asahi branch, and what Fedora Asahi Remix builds its kernel from. Closest to what you are already running. |
-| 2 | `fairydust` | 7.0.13 | Same base plus experimental USB-C DisplayPort alt mode, so external displays over USB-C work. |
+| 1 | `fairydust` *(default)* | 7.0.13 | The main Asahi base plus experimental USB-C DisplayPort alt mode, so external displays over USB-C work. |
+| 2 | `asahi` | 7.0.13 | The main Asahi branch, and what Fedora Asahi Remix builds its kernel from. Same base, without the USB-C alt mode work. |
 | 3 | `asahi-wip` | 7.1.3 | Asahi's development branch. Newer and closer to upstream, less tested, no USB-C alt mode. |
 
 **The HDMI suspend fix applies to all three** — `dcp.c` is identical on each, and the bug is present on all of them, including the stable `asahi` branch that most people are running.
 
-Pick `asahi` if you just want the HDMI fix. Pick `fairydust` if you also drive a monitor over USB-C. Pick `asahi-wip` if you want the newer base and accept it is less tested.
+Pick `fairydust` if you drive a monitor over USB-C as well as HDMI. Pick `asahi` if you only use the built-in HDMI port and would rather stay on the branch Fedora Asahi Remix ships. Pick `asahi-wip` if you want the newer base and accept it is less tested.
 
 The BORE patch targets 7.0, so it applies to `asahi` and `fairydust` but not to `asahi-wip`. Decline it at the prompt if you pick option 3.
 
-Skip the menu with `BRANCH=asahi`, `BRANCH=fairydust` or `BRANCH=asahi-wip`.
+Skip the menu with `BRANCH=fairydust`, `BRANCH=asahi` or `BRANCH=asahi-wip`.
 
 ### Updating later
 
 Re-run the script. It fetches the branch, shows you what is new, and asks before fast-forwarding:
 
 ```
-[INFO]  Checking for upstream changes on asahi ...
+[INFO]  Checking for upstream changes on fairydust ...
 [INFO]  12 new commit(s) upstream:
         a1b2c3d drm/apple: ...
-Update the source tree to origin/asahi? [y/N]:
+Update the source tree to origin/fairydust? [y/N]:
 ```
 
 Say yes and it resets the tree, reapplies `patches/`, and rebuilds. Say no and it rebuilds what you already have. `UPDATE_SOURCE=0` skips the check entirely.

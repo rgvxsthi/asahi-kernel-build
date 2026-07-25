@@ -228,15 +228,14 @@ select_branch() {
     echo ""
     echo "Which Asahi branch do you want to build?"
     echo ""
-    echo "  1) asahi       The main Asahi branch, and what Fedora Asahi Remix"
-    echo "                 builds its kernel from. Currently Linux 7.0.13."
-    echo "                 Closest to the kernel you are running now. Pick this"
-    echo "                 if you just want the HDMI fix and nothing else."
+    echo "  1) fairydust   The main Asahi base plus experimental USB-C"
+    echo "                 DisplayPort alt mode, so external displays over"
+    echo "                 USB-C work. Currently Linux 7.0.13."
     echo ""
-    echo "  2) fairydust   The same base plus experimental USB-C DisplayPort"
-    echo "                 alt mode, so external displays over USB-C work."
-    echo "                 Also 7.0.13. Pick this if you use a USB-C dock or"
-    echo "                 adapter to drive a monitor."
+    echo "  2) asahi       The main Asahi branch, and what Fedora Asahi Remix"
+    echo "                 builds its kernel from. Also 7.0.13, without the"
+    echo "                 USB-C alt mode work. Pick this if you only use the"
+    echo "                 built-in HDMI port."
     echo ""
     echo "  3) asahi-wip   Asahi's development branch. Newer kernel (currently"
     echo "                 7.1.3) and closer to upstream, but less tested and"
@@ -250,7 +249,7 @@ select_branch() {
     echo ""
 
     if [[ "${ASSUME_YES:-0}" == "1" ]]; then
-        BRANCH="asahi"
+        BRANCH="fairydust"
         info "ASSUME_YES set, defaulting to: $BRANCH"
         return
     fi
@@ -258,9 +257,9 @@ select_branch() {
     local choice
     read -rp "$(echo -e "${YELLOW}Branch [1/2/3, default 1]:${NC} ")" choice
     case "$choice" in
-        2) BRANCH="fairydust" ;;
+        2) BRANCH="asahi" ;;
         3) BRANCH="asahi-wip" ;;
-        *) BRANCH="asahi" ;;
+        *) BRANCH="fairydust" ;;
     esac
     ok "Building branch: $BRANCH"
 }
