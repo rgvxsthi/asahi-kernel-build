@@ -40,10 +40,10 @@ set -eo pipefail
 
 # --- Configuration ---
 # Overridable from the environment, e.g. BRANCH=my-branch ./asahi-fairydust-build.sh
-REPO_URL="${REPO_URL:-https://github.com/rgvxsthi/linux.git}"
+REPO_URL="${REPO_URL:-https://github.com/AsahiLinux/linux.git}"
 CLONE_DIR="${CLONE_DIR:-$HOME/linux-fairydust}"
-BRANCH="${BRANCH:-rgvx/fairydust}"
-LOCALVERSION="${LOCALVERSION:--rgvx}"
+BRANCH="${BRANCH:-}"
+LOCALVERSION="${LOCALVERSION:--hdmifix}"
 JOBS="${JOBS:-$(nproc)}"
 DISPLAY_SCRIPT="$HOME/display-setup.sh"
 LOG_FILE="$HOME/fairydust-build.log"
@@ -216,6 +216,102 @@ install_deps() {
     info "  bindgen: $(bindgen --version)"
 }
 
+# --- Choose which Asahi branch to build ---
+#
+# Skipped entirely if BRANCH is already set in the environment.
+select_branch() {
+    if [[ -n "$BRANCH" ]]; then
+        info "BRANCH is set to '$BRANCH', not asking"
+        return
+    fi
+
+    echo ""
+    echo "Which Asahi branch do you want to build?"
+    echo ""
+    echo "  1) fairydust   Asahi's development branch plus experimental USB-C"
+    echo "                 DisplayPort alt mode, so external displays over USB-C"
+    echo "                 work. Currently Linux 7.0.13. Pick this if you use a"
+    echo "                 USB-C dock or adapter for a monitor."
+    echo ""
+    echo "  2) asahi-wip   Asahi's main development branch. Newer kernel"
+    echo "                 (currently 7.1.3) and closer to upstream, but no"
+    echo "                 USB-C DisplayPort alt mode. Pick this if you only"
+    echo "                 use the built-in HDMI port, or want the newer base."
+    echo ""
+    echo "  The HDMI suspend fix in patches/ applies to both: the display"
+    echo "  driver is identical on either branch."
+    echo ""
+    echo "  Note: the BORE patch targets 7.0 and will not apply to asahi-wip."
+    echo "  Decline it at the prompt if you pick 2."
+    echo ""
+
+    if [[ "${ASSUME_YES:-0}" == "1" ]]; then
+        BRANCH="fairydust"
+        info "ASSUME_YES set, defaulting to: $BRANCH"
+        return
+    fi
+
+    local choice
+    read -rp "$(echo -e "${YELLOW}Branch [1/2, default 1]:${NC} ")" choice
+    case "$choice" in
+        2) BRANCH="asahi-wip" ;;
+        *) BRANCH="fairydust" ;;
+    esac
+    ok "Building branch: $BRANCH"
+}
+
+# --- Bring an existing checkout up to date ---
+#
+# Re-running this script on an existing tree used to rebuild the exact same
+# source, which is surprising if you ran it again expecting to pick up
+# upstream changes. Fetch, and offer to fast-forward.
+#
+# The tree is normally dirty at this point, because the previous run applied
+# patches to it without committing them. Those are regenerated from patches/
+# on every run, so discarding them is safe, but anything else the user put
+# there is not, hence the prompt.
+#
+#   UPDATE_SOURCE=0   never touch the existing tree
+update_source() {
+    local behind
+
+    if [[ "${UPDATE_SOURCE:-1}" != "1" ]]; then
+        info "UPDATE_SOURCE=0, leaving the existing tree alone"
+        return
+    fi
+
+    info "Checking for upstream changes on $BRANCH ..."
+    if ! git fetch origin "$BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+        warn "Could not fetch. Building the tree as it stands."
+        return
+    fi
+
+    behind="$(git rev-list --count "HEAD..FETCH_HEAD" 2>/dev/null || echo 0)"
+    if [[ "$behind" == "0" ]]; then
+        ok "Already up to date with origin/$BRANCH"
+        return
+    fi
+
+    echo ""
+    info "$behind new commit(s) upstream:"
+    git log --oneline --max-count=10 "HEAD..FETCH_HEAD" | tee -a "$LOG_FILE"
+    echo ""
+
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        warn "Updating resets $CLONE_DIR, discarding uncommitted changes there."
+        warn "Patches from patches/ are reapplied afterwards, so those are fine."
+    fi
+
+    if ! confirm "Update the source tree to origin/$BRANCH?"; then
+        info "Keeping the current source."
+        return
+    fi
+
+    git reset --hard FETCH_HEAD 2>&1 | tee -a "$LOG_FILE"
+    git clean -fd 2>&1 | tee -a "$LOG_FILE"
+    ok "Updated to $(git log --oneline -1)"
+}
+
 # --- Step 2: Clone Fairydust Branch ---
 clone_source() {
     echo ""
@@ -229,6 +325,7 @@ clone_source() {
             info "Checking out $BRANCH"
             git checkout "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
         fi
+        update_source
         ok "Branch: $(git branch --show-current)"
         info "HEAD:   $(git log --oneline -1)"
         return
@@ -290,9 +387,20 @@ apply_patches() {
         fi
 
         if ! git apply --check "$p" 2>/dev/null; then
-            error "Patch does not apply cleanly against $BRANCH: $name
-The branch has probably moved on and the patch needs a refresh, or the
-change is already upstream. Re-run with SKIP_PATCHES=1 to build without it."
+            warn "Does not apply against $BRANCH: $name"
+            warn "Either the branch moved on, or this patch targets a different"
+            warn "kernel version (the BORE patch is cut for 7.0, for instance)."
+            # Non-interactive runs fail loudly rather than quietly producing a
+            # kernel missing something the caller asked for.
+            if [[ "${ASSUME_YES:-0}" == "1" || -n "${PATCHES:-}" ]]; then
+                error "Refusing to continue without $name in a non-interactive run.
+Re-run with SKIP_PATCHES=1, or drop it from PATCHES, to build without it."
+            fi
+            if ! confirm "Continue the build without this patch?"; then
+                error "Stopping at your request."
+            fi
+            info "Continuing without: $name"
+            continue
         fi
 
         # PATCHES=... selects non-interactively by filename substring.
@@ -629,6 +737,7 @@ print_summary() {
 # --- Main ---
 main() {
     preflight
+    select_branch
     install_deps
     clone_source
     apply_patches

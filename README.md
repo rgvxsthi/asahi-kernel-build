@@ -76,7 +76,7 @@ cd asahi-linux-hdmi-sleep-fixer
 ./asahi-fairydust-build.sh
 ```
 
-Reboot and pick the `-rgvx` entry in GRUB.
+Reboot and pick the `-hdmifix` entry in GRUB.
 
 Unattended, on a 16 GB machine:
 
@@ -87,7 +87,7 @@ ASSUME_YES=1 NO_REBOOT=1 JOBS=6 ./asahi-fairydust-build.sh
 ### Verify it worked
 
 ```bash
-uname -r                                      # 7.0.13-rgvx+
+uname -r                                      # e.g. 7.0.13-hdmifix+
 glxinfo | grep "OpenGL renderer"              # Apple M1 Pro (...), NOT llvmpipe
 cat /sys/class/drm/card*-HDMI-A-1/status      # connected
 systemctl suspend                             # wake it, then check again
@@ -113,14 +113,16 @@ Everything is environment-overridable:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `REPO_URL` | `https://github.com/rgvxsthi/linux.git` | Kernel source |
-| `BRANCH` | `rgvx/fairydust` | Branch to build |
+| `REPO_URL` | `https://github.com/AsahiLinux/linux.git` | Kernel source |
+| `BRANCH` | *(asks)* | Branch to build; set it to skip the menu |
 | `CLONE_DIR` | `$HOME/linux-fairydust` | Where to clone |
-| `LOCALVERSION` | `-rgvx` | Kernel name suffix / GRUB entry |
+| `LOCALVERSION` | `-hdmifix` | Kernel name suffix / GRUB entry |
 | `JOBS` | `$(nproc)` | Parallel build jobs |
 | `ASSUME_YES` | `0` | Answer prompts automatically |
 | `NO_REBOOT` | `0` | Never reboot, even unattended |
 | `SKIP_PATCHES` | `0` | Build the branch unpatched |
+| `PATCHES` | *(asks)* | Comma-separated filename substrings, case-insensitive |
+| `UPDATE_SOURCE` | `1` | Set to `0` to never refresh an existing checkout |
 
 ## Patches
 
@@ -153,25 +155,49 @@ Drop your own `.patch` files in there and they will be picked up.
 
 A [scheduled CI job](.github/workflows/patches-still-apply.yml) test-applies these against upstream `fairydust` every week, so a patch going stale surfaces there rather than two hours into someone's build.
 
-## Pinned vs tracking upstream
+## Which branch, and staying up to date
 
-There are two ways to build, and they trade off differently.
+The script builds straight from **AsahiLinux/linux** and applies `patches/` on top at build time. There is no fork in the way, so every build picks up whatever upstream has published.
 
-**Pinned (the default).** Builds from `rgvxsthi/linux` branch `rgvx/fairydust`, which is upstream `fairydust` with both patches already committed. Reproducible, and it is the exact tree that was tested. You only move when you choose to:
+On startup it asks which branch you want:
 
-```bash
-./sync-upstream.sh          # rebase the patch branch onto latest upstream fairydust
-git push --force-with-lease origin rgvx/fairydust
-./asahi-fairydust-build.sh  # rebuild
+```
+  1) fairydust   Asahi's development branch plus experimental USB-C
+                 DisplayPort alt mode. Currently Linux 7.0.13.
+  2) asahi-wip   Asahi's main development branch. Newer (currently 7.1.3),
+                 closer to upstream, no USB-C DisplayPort alt mode.
 ```
 
-**Tracking upstream.** Builds whatever upstream `fairydust` currently is, applying `patches/` on top at build time. Every rebuild automatically picks up upstream changes, and there is no fork to maintain:
+The HDMI suspend fix applies to **both** — `dcp.c` is identical on either branch. Pick `fairydust` if you use a USB-C dock or adapter for a monitor; pick `asahi-wip` if you only use the built-in HDMI port or want the newer base.
 
-```bash
-REPO_URL=https://github.com/AsahiLinux/linux.git BRANCH=fairydust ./asahi-fairydust-build.sh
+The BORE patch targets 7.0, so it will not apply to `asahi-wip`. Decline it at the prompt if you choose that branch.
+
+Skip the menu with `BRANCH=fairydust` or `BRANCH=asahi-wip`.
+
+### Updating later
+
+Re-run the script. It fetches the branch, shows you what is new, and asks before fast-forwarding:
+
+```
+[INFO]  Checking for upstream changes on fairydust ...
+[INFO]  12 new commit(s) upstream:
+        a1b2c3d drm/apple: ...
+Update the source tree to origin/fairydust? [y/N]:
 ```
 
-The trade is that you get whatever upstream happens to be that day, which may be a kernel version nobody has tested this against. Pinned is the safer default; tracking is the better answer if you want upstream fixes without babysitting a fork.
+Say yes and it resets the tree, reapplies `patches/`, and rebuilds. Say no and it rebuilds what you already have. `UPDATE_SOURCE=0` skips the check entirely.
+
+Note that the custom kernel is installed with `make install`, not as an RPM, so `dnf` does not manage it and will never update it on its own — re-running this script is the update mechanism. Your stock Fedora kernel keeps updating through `dnf` as normal and stays bootable in GRUB.
+
+### Building from a fork instead
+
+If you would rather pin to a tested tree, or carry your own commits, point the script at any repo:
+
+```bash
+REPO_URL=https://github.com/rgvxsthi/linux.git BRANCH=rgvx/fairydust ./asahi-fairydust-build.sh
+```
+
+`rgvxsthi/linux` branch `rgvx/fairydust` is upstream `fairydust` with both patches already committed. `sync-upstream.sh` rebases such a branch onto a newer upstream.
 
 ## What the script does
 
