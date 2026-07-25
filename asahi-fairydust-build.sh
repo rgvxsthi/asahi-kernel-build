@@ -40,7 +40,6 @@ set -eo pipefail
 
 # --- Configuration ---
 # Overridable from the environment, e.g. BRANCH=my-branch ./asahi-fairydust-build.sh
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_URL="${REPO_URL:-https://github.com/rgvxsthi/linux.git}"
 CLONE_DIR="${CLONE_DIR:-$HOME/linux-fairydust}"
 BRANCH="${BRANCH:-rgvx/fairydust}"
@@ -239,7 +238,9 @@ clone_source() {
 # already present in the tree are skipped, so re-running the script on an
 # existing checkout is safe. Set SKIP_PATCHES=1 to build the branch untouched.
 apply_patches() {
-    local patch_dir="$SCRIPT_DIR/patches"
+    local script_dir patch_dir
+    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    patch_dir="$script_dir/patches"
 
     if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
         info "SKIP_PATCHES is set, building the branch as-is"
