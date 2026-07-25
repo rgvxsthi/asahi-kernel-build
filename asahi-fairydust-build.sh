@@ -91,6 +91,17 @@ confirm() {
     [[ "$response" =~ ^[Yy]$ ]]
 }
 
+# Same as confirm(), but defaults to yes on an empty answer. Used for the
+# patch prompts, where applying is the reason the user ran this at all.
+confirm_default_yes() {
+    if [[ "${ASSUME_YES:-0}" == "1" ]]; then
+        info "$1 [auto-yes]"
+        return 0
+    fi
+    read -rp "$(echo -e "${YELLOW}$1 [Y/n]:${NC} ")" response
+    [[ -z "$response" || "$response" =~ ^[Yy]$ ]]
+}
+
 # --- Pre-flight Checks ---
 preflight() {
     echo ""
@@ -234,9 +245,14 @@ clone_source() {
 
 # --- Apply local patches on top of the branch ---
 #
-# Anything in patches/*.patch is applied in filename order. Patches that are
-# already present in the tree are skipped, so re-running the script on an
-# existing checkout is safe. Set SKIP_PATCHES=1 to build the branch untouched.
+# Anything in patches/*.patch is offered in filename order, one prompt each,
+# defaulting to yes. Patches already present in the tree are skipped without
+# asking, so re-running against an existing checkout is safe.
+#
+#   SKIP_PATCHES=1        apply nothing
+#   PATCHES="0001,bore"   apply only patches whose filename contains one of
+#                         these, without prompting
+#   ASSUME_YES=1          apply everything without prompting
 apply_patches() {
     local script_dir patch_dir
     script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -254,14 +270,22 @@ apply_patches() {
 
     cd "$CLONE_DIR" || error "Source tree missing at $CLONE_DIR"
 
-    local p
+    echo ""
+    info "Patches available in $patch_dir"
+
+    local p name subject wanted
     for p in "$patch_dir"/*.patch; do
-        local name
         name="$(basename "$p")"
 
-        # Already applied, e.g. re-running against an existing checkout.
+        # The Subject: line of a git format-patch file is a ready-made
+        # one-line description, so patches are self-describing.
+        subject="$(sed -n 's/^Subject: \[PATCH[^]]*\] //p' "$p" | head -1)"
+        [[ -z "$subject" ]] && subject="$name"
+
+        # Already applied, e.g. re-running against an existing checkout, or
+        # building a branch that already carries the change as a commit.
         if git apply --reverse --check "$p" 2>/dev/null; then
-            info "Already applied, skipping: $name"
+            info "Already in this tree, skipping: $subject"
             continue
         fi
 
@@ -271,8 +295,26 @@ The branch has probably moved on and the patch needs a refresh, or the
 change is already upstream. Re-run with SKIP_PATCHES=1 to build without it."
         fi
 
-        git apply "$p" 2>&1 | tee -a "$LOG_FILE"
-        ok "Applied: $name"
+        # PATCHES=... selects non-interactively by filename substring.
+        if [[ -n "${PATCHES:-}" ]]; then
+            wanted=0
+            local want
+            # Case-insensitive: filenames contain things like "BORE", and
+            # nobody should have to guess the capitalisation.
+            for want in ${PATCHES//,/ }; do
+                [[ "${name,,}" == *"${want,,}"* ]] && wanted=1
+            done
+            if [[ "$wanted" -eq 0 ]]; then
+                info "Not selected by PATCHES, skipping: $subject"
+                continue
+            fi
+        elif ! confirm_default_yes "Apply: $subject"; then
+            info "Skipped: $name"
+            continue
+        fi
+
+        git apply --whitespace=nowarn "$p" 2>&1 | tee -a "$LOG_FILE"
+        ok "Applied: $subject"
     done
 }
 

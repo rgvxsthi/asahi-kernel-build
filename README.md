@@ -131,6 +131,24 @@ Everything in `patches/*.patch` is applied in filename order after cloning and b
 | `0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch` | The HDMI-after-suspend fix described above |
 | `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
 
+Each patch is offered as its own prompt, defaulting to yes, so you can take the HDMI fix and decline BORE:
+
+```
+[INFO]  Patches available in ./patches
+Apply: drm/apple: reconnect DP2HDMI output on resume [Y/n]: 
+Apply: sched: add BORE (Burst-Oriented Response Enhancer) [Y/n]: n
+[INFO]  Skipped: 0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch
+```
+
+Prompt text comes from each patch's `Subject:` line, so patches are self-describing. Non-interactive equivalents:
+
+```bash
+PATCHES=0001 ./asahi-fairydust-build.sh          # only the HDMI fix
+PATCHES=hdmi,bore ./asahi-fairydust-build.sh     # by name, case-insensitive
+ASSUME_YES=1 ./asahi-fairydust-build.sh          # all of them, no prompts
+SKIP_PATCHES=1 ./asahi-fairydust-build.sh        # none
+```
+
 Drop your own `.patch` files in there and they will be picked up.
 
 A [scheduled CI job](.github/workflows/patches-still-apply.yml) test-applies these against upstream `fairydust` every week, so a patch going stale surfaces there rather than two hours into someone's build.
