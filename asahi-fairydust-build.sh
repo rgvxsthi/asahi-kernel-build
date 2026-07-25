@@ -56,10 +56,17 @@ LOG_FILE="$HOME/fairydust-build.log"
 # rust-src RPM, which makes rust/core.o fail to build with errors like
 # "attributes starting with `rustc` are reserved" and
 # "cannot use `const` closures outside of const contexts".
-if [[ -x /usr/bin/rustc && -d /usr/lib/rustlib/src/rust/library ]]; then
-    export PATH="/usr/bin:$PATH"
-    export RUST_LIB_SRC="/usr/lib/rustlib/src/rust/library"
-fi
+#
+# Fedora only. ALARM's linux-asahi PKGBUILD deliberately uses rustup with a
+# pinned rust-toolchain.toml, so forcing the system toolchain there would
+# override the one the package expects.
+pin_fedora_rust_toolchain() {
+    if [[ -x /usr/bin/rustc && -d /usr/lib/rustlib/src/rust/library ]]; then
+        export PATH="/usr/bin:$PATH"
+        export RUST_LIB_SRC="/usr/lib/rustlib/src/rust/library"
+        info "Using the distro Rust toolchain: $(/usr/bin/rustc --version)"
+    fi
+}
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -175,11 +182,21 @@ preflight() {
 
     echo ""
     warn "This script will:"
-    echo "  - Install build dependencies (~2GB)"
-    echo "  - Clone the Asahi Linux kernel source (~3GB)"
-    echo "  - Build a custom kernel (~10-15GB build artifacts)"
-    echo "  - Install the kernel alongside your existing one"
-    echo "  - Modify GRUB and m1n1 bootloader configuration"
+    if [[ "$DISTRO" == "alarm" ]]; then
+        echo "  - Install build dependencies (base-devel, git, pacman-contrib)"
+        echo "  - Clone asahi-alarm/PKGBUILDs"
+        echo "  - Add the selected patches to the linux-asahi PKGBUILD"
+        echo "  - Build and install that package with makepkg -si"
+        echo ""
+        echo "  Bootloader and initramfs are left to Arch's packaging."
+        echo "  Your current kernel package stays installed unless makepkg succeeds."
+    else
+        echo "  - Install build dependencies (~2GB)"
+        echo "  - Clone the Asahi Linux kernel source (~3GB)"
+        echo "  - Build a custom kernel (~10-15GB build artifacts)"
+        echo "  - Install the kernel alongside your existing one"
+        echo "  - Modify GRUB and m1n1 bootloader configuration"
+    fi
     echo ""
     warn "The build will take 60-90+ minutes."
     echo ""
@@ -898,6 +915,7 @@ main() {
         return
     fi
 
+    pin_fedora_rust_toolchain
     select_branch
     install_deps
     clone_source
