@@ -189,16 +189,6 @@ Say yes and it resets the tree, reapplies `patches/`, and rebuilds. Say no and i
 
 Note that the custom kernel is installed with `make install`, not as an RPM, so `dnf` does not manage it and will never update it on its own — re-running this script is the update mechanism. Your stock Fedora kernel keeps updating through `dnf` as normal and stays bootable in GRUB.
 
-### Building from a fork instead
-
-If you would rather pin to a tested tree, or carry your own commits, point the script at any repo:
-
-```bash
-REPO_URL=https://github.com/rgvxsthi/linux.git BRANCH=rgvx/fairydust ./asahi-fairydust-build.sh
-```
-
-`rgvxsthi/linux` branch `rgvx/fairydust` is upstream `fairydust` with both patches already committed. `sync-upstream.sh` rebases such a branch onto a newer upstream.
-
 ## What the script does
 
 1. Installs build dependencies (gcc, Rust toolchain, etc.)
@@ -220,13 +210,12 @@ Beyond the HDMI patch, this fork carries build fixes that have been offered back
 - **`ASSUME_YES` / `NO_REBOOT`** for unattended builds, with reboot kept as a separate opt-in so an unattended run can never reboot on its own.
 - **Environment-overridable config**, so you can build your own branch without editing the script.
 - **Non-destructive clone step** — reuses an existing checkout instead of offering to delete it, and clones blobless rather than `--depth 1` so the tree stays rebaseable.
-- **`sync-upstream.sh`** to rebase local patches onto a newer upstream branch.
 
 ## Caveats
 
 - Custom kernel. **Module signing is disabled.**
 - `dnf` will keep updating your stock kernel; this one stays until you rebuild.
-- When upstream moves, run `./sync-upstream.sh` and rebuild.
+- When upstream moves, re-run the script and accept the update prompt.
 - The `fairydust` branch is experimental and not officially supported by the Asahi team.
 
 ## Credits

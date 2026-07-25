@@ -1,8 +1,8 @@
-# Post-reboot test checklist — 7.0.13-rgvx+
+# Post-reboot test checklist
 
 Built 2026-07-25 on MacBook Pro 14" M1 Pro (`apple,j314s`).
 
-Boot: reboot, then pick the GRUB entry containing **`-rgvx`**.
+Boot: reboot, then pick the GRUB entry containing **`-hdmifix`** (or whatever you set `LOCALVERSION` to).
 Rollback at any time: reboot and pick a stock `*.asahi.fc44.aarch64+16k` entry. Stock kernels are untouched.
 
 ## 1. Right kernel booted
@@ -10,7 +10,7 @@ Rollback at any time: reboot and pick a stock `*.asahi.fc44.aarch64+16k` entry. 
 ```bash
 uname -r
 ```
-Expect `7.0.13-rgvx+`.
+Expect the kernel version of the branch you built, suffixed with `-hdmifix+`.
 
 ## 2. GPU acceleration (check this before anything else)
 
@@ -71,11 +71,11 @@ USB-C DisplayPort alt mode (the original point of the fairydust branch) also shi
 
 ---
 
-## Results — 2026-07-25, MacBook Pro 14" M1 Pro (`apple,j314s`), 7.0.13-rgvx+
+## Results — 2026-07-25, MacBook Pro 14" M1 Pro (`apple,j314s`), fairydust 7.0.13
 
 | Test | Result |
 |---|---|
-| Correct kernel booted | Pass — `7.0.13-rgvx+` |
+| Correct kernel booted | Pass |
 | GPU acceleration | Pass — `Apple M1 Pro (G13S C0)`, Mesa 26.1.5, not llvmpipe |
 | HDMI connected across suspend | Pass — returns automatically, no replug |
 | Resume with HDMI unplugged, plug in after | Pass — no regression, hotplug still works |
