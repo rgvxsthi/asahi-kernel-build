@@ -1,0 +1,646 @@
+From: Asahi Linux contributors <asahi@lists.linux.dev>
+Subject: [PATCH] fairydust: USB-C DisplayPort alt mode (13 commits)
+
+Squashed range asahi-7.0.13-1..fairydust from AsahiLinux/linux, which is
+exactly the delta between the release branch and the fairydust branch:
+13 commits, 0 behind.
+
+  fccff2c1 usb: typec: tipd: Track data_status changes for CD321x
+  7a025f44 usb: typec: tipd: HACK: Use drm oob hotplug event
+  7a06df07 arm64: dts: apple: t8103: Add dp-altmode dts hacks
+  e2cce925 HACK: arm64: dts: apple: t8103: Mark ps_atc1_common as always on
+  40589659 arm64: dts: apple: t8112: Add dp-altmode dts hacks
+  20ec41ad HACK: arm64: dts: apple: t8112: Mark ps_atc1_common as always on
+  e0bd4c25 arm64: apple: t8112-j473: Add DP-altmode on typec1
+  9c50abc0 HACK: arm64: apple: t8112-j473: Mark ps_atc1_common as always on
+  e18d6e7c arm64: dts: apple: t60xx: j[34]1[46]: Add dp-altmode hacks
+  7cbe8488 HACK: arm64: dts: apple: t60xx: j[34]1[46]: Mark ps_atc1_common as always on
+  9f9e8c20 arm64: dts: apple: t60xx: j[34]75: Add dp-altmode hacks
+  3f14cccc HACK: arm64: dts: apple: t60xx: j[34]75: Mark ps_atc1_common as always on
+  c8399224 arm64: dts: apple: t6020-j474s: Add dp-altmode hacks
+
+This exists so distributions that build the release branch, such as Asahi
+ALARM's linux-asahi, can get USB-C DisplayPort output without switching
+their kernel source to a different branch.
+
+Upstream marks several of these commits HACK, and the fairydust branch is
+explicitly experimental. In particular the ps_atc1_common power domain is
+forced always-on, which has battery implications on a laptop. Only one
+USB-C port drives a display.
+
+Not authored here. Provenance:
+https://github.com/AsahiLinux/linux/compare/asahi-7.0.13-1...fairydust
+---
+diff --git a/arch/arm64/boot/dts/apple/t6001-j375c.dts b/arch/arm64/boot/dts/apple/t6001-j375c.dts
+index f3f98f03800908..844bee0c4fdf39 100644
+--- a/arch/arm64/boot/dts/apple/t6001-j375c.dts
++++ b/arch/arm64/boot/dts/apple/t6001-j375c.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t6001.dtsi"
+ #include "t600x-j375.dtsi"
+ 
+diff --git a/arch/arm64/boot/dts/apple/t6002-j375d.dts b/arch/arm64/boot/dts/apple/t6002-j375d.dts
+index 5cf30cd162b679..1eedbfecfc38fe 100644
+--- a/arch/arm64/boot/dts/apple/t6002-j375d.dts
++++ b/arch/arm64/boot/dts/apple/t6002-j375d.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t6002.dtsi"
+ #include "t600x-j375.dtsi"
+ 
+diff --git a/arch/arm64/boot/dts/apple/t600x-j314-j316.dtsi b/arch/arm64/boot/dts/apple/t600x-j314-j316.dtsi
+index 38808916e29948..70e7d0bc09376f 100644
+--- a/arch/arm64/boot/dts/apple/t600x-j314-j316.dtsi
++++ b/arch/arm64/boot/dts/apple/t600x-j314-j316.dtsi
+@@ -9,6 +9,8 @@
+  * Copyright The Asahi Linux Contributors
+  */
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include <dt-bindings/leds/common.h>
+ 
+ / {
+@@ -22,6 +24,9 @@
+ 		bluetooth0 = &bluetooth0;
+ 		dcp = &dcp;
+ 		dcpext0 = &dcpext0;
++#ifdef ENABLE_DCPEXT_TYPEC
++		dcpext1 = &dcpext1;
++#endif
+ 		disp0 = &display;
+ 		disp0_piodma = &disp0_piodma;
+ 		serial0 = &serial0;
+@@ -186,6 +191,11 @@
+ 			power-role = "dual";
+ 			data-role = "dual";
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++			/* hacks */
++			displayport = <&dcpext1>;
++#endif
++
+ 			ports {
+ 				#address-cells = <1>;
+ 				#size-cells = <0>;
+@@ -247,6 +257,50 @@
+ 	};
+ };
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++
++&display {
++	iommus = <&disp0_dart 0>, <&dispext0_dart 0>, <&dispext1_dart 0>;
++};
++
++&dispext1_dart {
++	status = "okay";
++};
++
++&dcpext1_dart {
++	status = "okay";
++};
++
++&dcpext1_mbox {
++	status = "okay";
++};
++
++&dcpext1 {
++	status = "okay";
++	apple,connector-type = "DP";
++
++	/* hacks */
++	apple,dptx-phy = <1>;
++	phys = <&atcphy1 PHY_TYPE_DP>;
++	phy-names = "dp-phy";
++	mux-controls = <&atcphy1_xbar 0>;
++	mux-control-names = "dp-xbar";
++	mux-index = <2>;
++};
++
++&dpaudio2 {
++	status = "okay";
++};
++
++&atcphy1_xbar {
++        status = "okay";
++};
++
++&ps_atc1_common {
++	apple,always-on; /* Needs to stay on for DP-alt suspend/resume */
++};
++#endif
++
+ /* Virtual regulator representing the shared shutdown GPIO */
+ / {
+ 	speaker_sdz: fixed-regulator-sn012776-sdz {
+diff --git a/arch/arm64/boot/dts/apple/t600x-j375.dtsi b/arch/arm64/boot/dts/apple/t600x-j375.dtsi
+index ce339c0855bc98..03b335d0cc53b2 100644
+--- a/arch/arm64/boot/dts/apple/t600x-j375.dtsi
++++ b/arch/arm64/boot/dts/apple/t600x-j375.dtsi
+@@ -23,6 +23,9 @@
+ 		disp0 = &display;
+ 		disp0_piodma = &disp0_piodma;
+ 		#endif
++#ifdef ENABLE_DCPEXT_TYPEC
++		dcpext1 = &dcpext1;
++#endif
+ 		ethernet0 = &ethernet0;
+ 		serial0 = &serial0;
+ 		sio = &sio;
+@@ -111,6 +114,11 @@
+ 			power-role = "dual";
+ 			data-role = "dual";
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++			/* hacks */
++			displayport = <&dcpext1>;
++#endif
++
+ 			ports {
+ 				#address-cells = <1>;
+ 				#size-cells = <0>;
+@@ -195,6 +203,49 @@
+ 	};
+ };
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++&display {
++	iommus = <&disp0_dart 0>, <&dispext1_dart 0>;
++};
++
++&dispext1_dart {
++	status = "okay";
++};
++
++&dcpext1_dart {
++	status = "okay";
++};
++
++&dcpext1_mbox {
++	status = "okay";
++};
++
++&dcpext1 {
++	status = "okay";
++	apple,connector-type = "DP";
++
++	/* hacks */
++	apple,dptx-phy = <1>;
++	phys = <&atcphy1 PHY_TYPE_DP>;
++	phy-names = "dp-phy";
++	mux-controls = <&atcphy1_xbar 0>;
++	mux-control-names = "dp-xbar";
++	mux-index = <2>;
++};
++
++&dpaudio2 {
++	status = "okay";
++};
++
++&atcphy1_xbar {
++        status = "okay";
++};
++
++&ps_atc1_common {
++	apple,always-on; /* Needs to stay on for DP-alt suspend/resume */
++};
++#endif
++
+ /* USB controllers */
+ &dwc3_0 {
+ 	ports {
+diff --git a/arch/arm64/boot/dts/apple/t6020-j474s.dts b/arch/arm64/boot/dts/apple/t6020-j474s.dts
+index 12dfe9693502ad..cfe7f8ac730641 100644
+--- a/arch/arm64/boot/dts/apple/t6020-j474s.dts
++++ b/arch/arm64/boot/dts/apple/t6020-j474s.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t6020.dtsi"
+ 
+ /*
+@@ -85,7 +87,11 @@
+ 	status = "disabled";
+ };
+ &display {
++#ifdef ENABLE_DCPEXT_TYPEC
++	iommus = <&dispext0_dart 0>, <&dispext1_dart 0>;
++#else
+ 	iommus = <&dispext0_dart 0>;
++#endif
+ };
+ &dispext0_dart {
+ 	status = "okay";
+diff --git a/arch/arm64/boot/dts/apple/t6021-j475c.dts b/arch/arm64/boot/dts/apple/t6021-j475c.dts
+index e4321cfc556838..ce08d5a42761b9 100644
+--- a/arch/arm64/boot/dts/apple/t6021-j475c.dts
++++ b/arch/arm64/boot/dts/apple/t6021-j475c.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t6021.dtsi"
+ #include "t602x-j474-j475.dtsi"
+ 
+@@ -81,7 +83,11 @@
+ 	status = "disabled";
+ };
+ &display {
++#ifdef ENABLE_DCPEXT_TYPEC
++	iommus = <&dispext0_dart 0>, <&dispext1_dart 0>;
++#else
+ 	iommus = <&dispext0_dart 0>;
++#endif
+ };
+ &dispext0_dart {
+ 	status = "okay";
+diff --git a/arch/arm64/boot/dts/apple/t6022-j475d.dts b/arch/arm64/boot/dts/apple/t6022-j475d.dts
+index cdfc78a1703c7a..1ab639556cb0b2 100644
+--- a/arch/arm64/boot/dts/apple/t6022-j475d.dts
++++ b/arch/arm64/boot/dts/apple/t6022-j475d.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #define NO_DCP
+ 
+ #include "t6022.dtsi"
+diff --git a/arch/arm64/boot/dts/apple/t6022-jxxxd.dtsi b/arch/arm64/boot/dts/apple/t6022-jxxxd.dtsi
+index fa0183441d791b..eee0c83f7f7d45 100644
+--- a/arch/arm64/boot/dts/apple/t6022-jxxxd.dtsi
++++ b/arch/arm64/boot/dts/apple/t6022-jxxxd.dtsi
+@@ -22,7 +22,11 @@
+ };
+ 
+ &display {
++#ifdef ENABLE_DCPEXT_TYPEC
++	iommus = <&dispext0_dart_die1 0>, <&dispext1_dart 0>;
++#else
+ 	iommus = <&dispext0_dart_die1 0>;
++#endif
+ };
+ 
+ &dispext0_dart_die1 {
+diff --git a/arch/arm64/boot/dts/apple/t8103-jxxx.dtsi b/arch/arm64/boot/dts/apple/t8103-jxxx.dtsi
+index 67a57fc507df92..bf92d3e2c7753e 100644
+--- a/arch/arm64/boot/dts/apple/t8103-jxxx.dtsi
++++ b/arch/arm64/boot/dts/apple/t8103-jxxx.dtsi
+@@ -9,10 +9,15 @@
+  * Copyright The Asahi Linux Contributors
+  */
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ / {
+ 	aliases {
+ 		bluetooth0 = &bluetooth0;
+ 		dcp = &dcp;
++#ifdef ENABLE_DCPEXT_TYPEC
++		dcpext = &dcpext;
++#endif
+ 		disp0 = &display;
+ 		disp0_piodma = &disp0_piodma;
+ 		serial0 = &serial0;
+@@ -103,6 +108,11 @@
+ 			power-role = "dual";
+ 			data-role = "dual";
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++			/* hacks */
++			displayport = <&dcpext>;
++#endif
++
+ 			ports {
+ 				#address-cells = <1>;
+ 				#size-cells = <0>;
+@@ -123,6 +133,45 @@
+ 	};
+ };
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++&display {
++	iommus = <&disp0_dart 0>, <&dispext0_dart 0>;
++};
++
++&dispext0_dart {
++	status = "okay";
++};
++
++&dcpext_dart {
++	status = "okay";
++};
++
++&dcpext_mbox {
++	status = "okay";
++};
++
++&dcpext {
++	status = "okay";
++	apple,connector-type = "DP";
++
++	/* hacks */
++	apple,dptx-phy = <1>;
++	phys = <&atcphy1 PHY_TYPE_DP>;
++	phy-names = "dp-phy";
++	mux-controls = <&atcphy1_xbar 0>;
++	mux-control-names = "dp-xbar";
++	mux-index = <0>;
++};
++
++&dpaudio1 {
++	status = "okay";
++};
++
++&ps_atc1_common {
++	apple,always-on; /* Needs to stay on for DP-alt suspend/resume */
++};
++#endif
++
+ /* USB controllers */
+ &dwc3_0 {
+ 	ports {
+diff --git a/arch/arm64/boot/dts/apple/t8112-j413.dts b/arch/arm64/boot/dts/apple/t8112-j413.dts
+index f36d40cb7fe611..312a54cb7f2155 100644
+--- a/arch/arm64/boot/dts/apple/t8112-j413.dts
++++ b/arch/arm64/boot/dts/apple/t8112-j413.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t8112.dtsi"
+ #include "t8112-jxxx.dtsi"
+ #include <dt-bindings/leds/common.h>
+diff --git a/arch/arm64/boot/dts/apple/t8112-j415.dts b/arch/arm64/boot/dts/apple/t8112-j415.dts
+index 7f63969ede2ab9..5fe5b2ba5dabd2 100644
+--- a/arch/arm64/boot/dts/apple/t8112-j415.dts
++++ b/arch/arm64/boot/dts/apple/t8112-j415.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t8112.dtsi"
+ #include "t8112-jxxx.dtsi"
+ #include <dt-bindings/leds/common.h>
+diff --git a/arch/arm64/boot/dts/apple/t8112-j473.dts b/arch/arm64/boot/dts/apple/t8112-j473.dts
+index 4fc96779806ea3..dea9ef1eb7340a 100644
+--- a/arch/arm64/boot/dts/apple/t8112-j473.dts
++++ b/arch/arm64/boot/dts/apple/t8112-j473.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t8112.dtsi"
+ #include "t8112-jxxx.dtsi"
+ 
+@@ -66,6 +68,51 @@
+ 	apple,dptx-phy = <5>;
+ };
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++/ {
++	aliases {
++		dcp = &dcp;
++	};
++};
++
++&display {
++	/* dispext0_dart needs to be first for m1n1's */
++	iommus = <&dispext0_dart 0>, <&disp0_dart 0>;
++};
++
++&disp0_dart {
++	status = "okay";
++};
++
++&dcp {
++	status = "okay";
++	apple,connector-type = "DP";
++
++	/* hacks */
++	apple,dptx-phy = <1>;
++	phys = <&atcphy1 PHY_TYPE_DP>;
++	phy-names = "dp-phy";
++	mux-controls = <&atcphy1_xbar 0>;
++	mux-control-names = "dp-xbar";
++	mux-index = <0>;
++};
++
++&dcpext {
++	/delete-property/ mux-controls;
++	/delete-property/ mux-control-names;
++	/delete-property/ mux-index;
++};
++
++&typec1 {
++	/* hacks */
++	displayport = <&dcp>;
++};
++
++&ps_atc1_common {
++	apple,always-on; /* Needs to stay on for DP-alt suspend/resume */
++};
++#endif
++
+ /* remove once m1n1 enables sio nodes after setup */
+ &sio {
+         status = "okay";
+diff --git a/arch/arm64/boot/dts/apple/t8112-j493.dts b/arch/arm64/boot/dts/apple/t8112-j493.dts
+index 61bbb7a3c6f486..9859375f8fa120 100644
+--- a/arch/arm64/boot/dts/apple/t8112-j493.dts
++++ b/arch/arm64/boot/dts/apple/t8112-j493.dts
+@@ -9,6 +9,8 @@
+ 
+ /dts-v1/;
+ 
++#define ENABLE_DCPEXT_TYPEC
++
+ #include "t8112.dtsi"
+ #include "t8112-jxxx.dtsi"
+ #include <dt-bindings/leds/common.h>
+diff --git a/arch/arm64/boot/dts/apple/t8112-jxxx.dtsi b/arch/arm64/boot/dts/apple/t8112-jxxx.dtsi
+index fb957f785d82c5..62fa3bc8f99ff0 100644
+--- a/arch/arm64/boot/dts/apple/t8112-jxxx.dtsi
++++ b/arch/arm64/boot/dts/apple/t8112-jxxx.dtsi
+@@ -96,6 +96,11 @@
+ 			power-role = "dual";
+ 			data-role = "dual";
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++			/* hacks */
++			displayport = <&dcpext>;
++#endif
++
+ 			ports {
+ 				#address-cells = <1>;
+ 				#size-cells = <0>;
+@@ -116,6 +121,51 @@
+ 	};
+ };
+ 
++#ifdef ENABLE_DCPEXT_TYPEC
++/ {
++	aliases {
++		dcpext = &dcpext;
++	};
++};
++
++&display {
++	iommus = <&disp0_dart 0>, <&dispext0_dart 0>;
++};
++
++&dispext0_dart {
++	status = "okay";
++};
++
++&dcpext_dart {
++	status = "okay";
++};
++
++&dcpext_mbox {
++	status = "okay";
++};
++
++&dcpext {
++	status = "okay";
++	apple,connector-type = "DP";
++
++	/* hacks */
++	apple,dptx-phy = <1>;
++	phys = <&atcphy1 PHY_TYPE_DP>;
++	phy-names = "dp-phy";
++	mux-controls = <&atcphy1_xbar 0>;
++	mux-control-names = "dp-xbar";
++	mux-index = <2>;
++};
++
++&dpaudio1 {
++	status = "okay";
++};
++
++&ps_atc1_common {
++	apple,always-on; /* Needs to stay on for DP-alt suspend/resume */
++};
++#endif
++
+ /* USB controllers */
+ &dwc3_0 {
+ 	ports {
+diff --git a/drivers/usb/typec/tipd/core.c b/drivers/usb/typec/tipd/core.c
+index d0b769333bd998..abc41773285592 100644
+--- a/drivers/usb/typec/tipd/core.c
++++ b/drivers/usb/typec/tipd/core.c
+@@ -6,6 +6,8 @@
+  * Author: Heikki Krogerus <heikki.krogerus@linux.intel.com>
+  */
+ 
++#include <drm/drm_connector.h>
++
+ #include <linux/i2c.h>
+ #include <linux/acpi.h>
+ #include <linux/gpio/consumer.h>
+@@ -194,6 +196,7 @@ struct cd321x_status {
+ 	u32 pwr_status;
+ 	u32 data_status;
+ 	u32 status_changed;
++	u32 data_status_changed;
+ 	struct usb_pd_identity partner_identity;
+ 	struct tps6598x_dp_sid_status_reg dp_sid_status;
+ 	struct tps6598x_intel_vid_status_reg intel_vid_status;
+@@ -216,6 +219,8 @@ struct cd321x {
+ 	struct cd321x_status update_status;
+ 	struct delayed_work update_work;
+ 	struct usb_pd_identity cur_partner_identity;
++
++	struct fwnode_handle *connector_fwnode;
+ };
+ 
+ static enum power_supply_property tps6598x_psy_props[] = {
+@@ -745,6 +750,7 @@ static void cd321x_update_work(struct work_struct *work)
+ 
+ 	st = cd321x->update_status;
+ 	cd321x->update_status.status_changed = 0;
++	cd321x->update_status.data_status_changed = 0;
+ 
+ 	bool old_connected = !!tps->partner;
+ 	bool new_connected = st.status & TPS_STATUS_PLUG_PRESENT;
+@@ -753,6 +759,9 @@ static void cd321x_update_work(struct work_struct *work)
+ 	bool usb_connection = st.data_status &
+ 			      (TPS_DATA_STATUS_USB2_CONNECTION | TPS_DATA_STATUS_USB3_CONNECTION);
+ 
++	bool dp_hpd = st.data_status & CD321X_DATA_STATUS_HPD_LEVEL;
++	bool dp_hpd_changed = st.data_status_changed & CD321X_DATA_STATUS_HPD_LEVEL;
++
+ 	enum usb_role old_role = usb_role_switch_get_role(tps->role_sw);
+ 	enum usb_role new_role = USB_ROLE_NONE;
+ 	enum typec_pwr_opmode pwr_opmode = TYPEC_PWR_MODE_USB;
+@@ -781,6 +790,10 @@ static void cd321x_update_work(struct work_struct *work)
+ 	if (old_role != USB_ROLE_NONE && (new_role != old_role || was_disconnected))
+ 		usb_role_switch_set_role(tps->role_sw, USB_ROLE_NONE);
+ 
++	if (cd321x->connector_fwnode && (!dp_hpd || dp_hpd_changed)) {
++		drm_connector_oob_hotplug_event(cd321x->connector_fwnode, connector_status_disconnected);
++	}
++
+ 	/* Process partner disconnection or change */
+ 	if (!new_connected || partner_changed) {
+ 		if (!IS_ERR(tps->partner))
+@@ -837,12 +850,16 @@ static void cd321x_update_work(struct work_struct *work)
+ 	/* Launch the USB role switch */
+ 	usb_role_switch_set_role(tps->role_sw, new_role);
+ 
++	if (cd321x->connector_fwnode && dp_hpd)
++		drm_connector_oob_hotplug_event(cd321x->connector_fwnode, connector_status_connected);
++
+ 	power_supply_changed(tps->psy);
+ }
+ 
+ static void cd321x_queue_status(struct cd321x *cd321x)
+ {
+ 	cd321x->update_status.status_changed |= cd321x->update_status.status ^ cd321x->tps.status;
++	cd321x->update_status.data_status_changed |= cd321x->update_status.data_status ^ cd321x->tps.data_status;
+ 
+ 	cd321x->update_status.status = cd321x->tps.status;
+ 	cd321x->update_status.pwr_status = cd321x->tps.pwr_status;
+@@ -1270,6 +1287,7 @@ static int
+ cd321x_register_port(struct tps6598x *tps, struct fwnode_handle *fwnode)
+ {
+ 	struct cd321x *cd321x = container_of(tps, struct cd321x, tps);
++	struct fwnode_handle *connector_fwnode = NULL;
+ 	int ret;
+ 
+ 	INIT_DELAYED_WORK(&cd321x->update_work, cd321x_update_work);
+@@ -1288,6 +1306,11 @@ cd321x_register_port(struct tps6598x *tps, struct fwnode_handle *fwnode)
+ 		goto err_unregister_altmodes;
+ 	}
+ 
++	if (fwnode_property_present(fwnode, "displayport"))
++		connector_fwnode = fwnode_find_reference(fwnode, "displayport", 0);
++	if (!IS_ERR_OR_NULL(connector_fwnode))
++		cd321x->connector_fwnode = connector_fwnode;
++
+ 	cd321x->state.alt = NULL;
+ 	cd321x->state.mode = TYPEC_STATE_SAFE;
+ 	cd321x->state.data = NULL;

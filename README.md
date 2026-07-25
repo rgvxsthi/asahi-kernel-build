@@ -132,6 +132,7 @@ Everything in `patches/*.patch` is applied in filename order after cloning and b
 |---|---|
 | `0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch` | The HDMI-after-suspend fix described above |
 | `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
+| `0003-fairydust-usb-c-displayport-alt-mode.patch` | USB-C DisplayPort alt mode, for distros that build the release branch rather than `fairydust`. See below. |
 
 Each patch is offered as its own prompt, defaulting to yes, so you can take the HDMI fix and decline BORE:
 
@@ -224,6 +225,32 @@ PKGBUILD and leaves it parsing correctly. **`makepkg`, mkinitcpio and ALARM's
 boot wiring are untested** — this was developed on Fedora. The script says so
 when it runs. Your existing kernel package stays installed unless `makepkg -si`
 succeeds. Reports welcome.
+
+### Getting fairydust (USB-C DisplayPort) on ALARM
+
+ALARM's `linux-asahi` builds the release branch, not `fairydust`, so the HDMI
+fix alone does not give you USB-C DisplayPort output. `patches/0003` closes
+that gap without changing which branch the package builds.
+
+`fairydust` is exactly **13 commits ahead of `asahi-7.0.13-1` and 0 behind**,
+so that delta is self-contained: DTS alt-mode hacks for every supported
+machine, plus two tipd changes. Patch 0003 is that range, applied the same way
+as everything else. Accept it at the prompt.
+
+It is also useful on Fedora if you pick the `asahi` branch instead of
+`fairydust`. On a `fairydust` tree it is detected as already applied and
+skipped, so it is safe to leave enabled either way.
+
+Caveats, inherited from upstream rather than introduced here:
+
+- Upstream marks several of these commits `HACK` and treats `fairydust` as
+  experimental.
+- `ps_atc1_common` is forced always-on, which has battery implications on a
+  laptop.
+- Only one USB-C port drives a display.
+
+Verified: applies with `patch -Np1` to `asahi-7.0.13-1`, coexists with patch
+0001, and reverse-detects on a `fairydust` tree. Not boot-tested — see above.
 
 BORE needs more than a patch on ALARM: its kernel `config` has no
 `CONFIG_SCHED_BORE`, so the patch would apply but the feature would compile out.
