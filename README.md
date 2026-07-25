@@ -114,7 +114,7 @@ Everything is environment-overridable:
 | Variable | Default | Purpose |
 |---|---|---|
 | `REPO_URL` | `https://github.com/AsahiLinux/linux.git` | Kernel source |
-| `BRANCH` | *(asks)* | Branch to build; set it to skip the menu |
+| `BRANCH` | *(asks, default `asahi`)* | Branch to build; set it to skip the menu |
 | `CLONE_DIR` | `$HOME/linux-fairydust` | Where to clone |
 | `LOCALVERSION` | `-hdmifix` | Kernel name suffix / GRUB entry |
 | `JOBS` | `$(nproc)` | Parallel build jobs |
@@ -161,28 +161,29 @@ The script builds straight from **AsahiLinux/linux** and applies `patches/` on t
 
 On startup it asks which branch you want:
 
-```
-  1) fairydust   Asahi's development branch plus experimental USB-C
-                 DisplayPort alt mode. Currently Linux 7.0.13.
-  2) asahi-wip   Asahi's main development branch. Newer (currently 7.1.3),
-                 closer to upstream, no USB-C DisplayPort alt mode.
-```
+| | Branch | Version | What it is |
+|---|---|---|---|
+| 1 | `asahi` *(default)* | 7.0.13 | The main Asahi branch, and what Fedora Asahi Remix builds its kernel from. Closest to what you are already running. |
+| 2 | `fairydust` | 7.0.13 | Same base plus experimental USB-C DisplayPort alt mode, so external displays over USB-C work. |
+| 3 | `asahi-wip` | 7.1.3 | Asahi's development branch. Newer and closer to upstream, less tested, no USB-C alt mode. |
 
-The HDMI suspend fix applies to **both** — `dcp.c` is identical on either branch. Pick `fairydust` if you use a USB-C dock or adapter for a monitor; pick `asahi-wip` if you only use the built-in HDMI port or want the newer base.
+**The HDMI suspend fix applies to all three** — `dcp.c` is identical on each, and the bug is present on all of them, including the stable `asahi` branch that most people are running.
 
-The BORE patch targets 7.0, so it will not apply to `asahi-wip`. Decline it at the prompt if you choose that branch.
+Pick `asahi` if you just want the HDMI fix. Pick `fairydust` if you also drive a monitor over USB-C. Pick `asahi-wip` if you want the newer base and accept it is less tested.
 
-Skip the menu with `BRANCH=fairydust` or `BRANCH=asahi-wip`.
+The BORE patch targets 7.0, so it applies to `asahi` and `fairydust` but not to `asahi-wip`. Decline it at the prompt if you pick option 3.
+
+Skip the menu with `BRANCH=asahi`, `BRANCH=fairydust` or `BRANCH=asahi-wip`.
 
 ### Updating later
 
 Re-run the script. It fetches the branch, shows you what is new, and asks before fast-forwarding:
 
 ```
-[INFO]  Checking for upstream changes on fairydust ...
+[INFO]  Checking for upstream changes on asahi ...
 [INFO]  12 new commit(s) upstream:
         a1b2c3d drm/apple: ...
-Update the source tree to origin/fairydust? [y/N]:
+Update the source tree to origin/asahi? [y/N]:
 ```
 
 Say yes and it resets the tree, reapplies `patches/`, and rebuilds. Say no and it rebuilds what you already have. `UPDATE_SOURCE=0` skips the check entirely.

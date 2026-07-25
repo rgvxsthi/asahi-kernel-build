@@ -228,34 +228,39 @@ select_branch() {
     echo ""
     echo "Which Asahi branch do you want to build?"
     echo ""
-    echo "  1) fairydust   Asahi's development branch plus experimental USB-C"
-    echo "                 DisplayPort alt mode, so external displays over USB-C"
-    echo "                 work. Currently Linux 7.0.13. Pick this if you use a"
-    echo "                 USB-C dock or adapter for a monitor."
+    echo "  1) asahi       The main Asahi branch, and what Fedora Asahi Remix"
+    echo "                 builds its kernel from. Currently Linux 7.0.13."
+    echo "                 Closest to the kernel you are running now. Pick this"
+    echo "                 if you just want the HDMI fix and nothing else."
     echo ""
-    echo "  2) asahi-wip   Asahi's main development branch. Newer kernel"
-    echo "                 (currently 7.1.3) and closer to upstream, but no"
-    echo "                 USB-C DisplayPort alt mode. Pick this if you only"
-    echo "                 use the built-in HDMI port, or want the newer base."
+    echo "  2) fairydust   The same base plus experimental USB-C DisplayPort"
+    echo "                 alt mode, so external displays over USB-C work."
+    echo "                 Also 7.0.13. Pick this if you use a USB-C dock or"
+    echo "                 adapter to drive a monitor."
     echo ""
-    echo "  The HDMI suspend fix in patches/ applies to both: the display"
-    echo "  driver is identical on either branch."
+    echo "  3) asahi-wip   Asahi's development branch. Newer kernel (currently"
+    echo "                 7.1.3) and closer to upstream, but less tested and"
+    echo "                 without the USB-C alt mode work."
     echo ""
-    echo "  Note: the BORE patch targets 7.0 and will not apply to asahi-wip."
-    echo "  Decline it at the prompt if you pick 2."
+    echo "  The HDMI suspend fix applies to all three: the display driver is"
+    echo "  identical on each."
+    echo ""
+    echo "  The BORE patch targets 7.0, so it applies to 1 and 2 but not to 3."
+    echo "  Decline it at the prompt if you pick 3."
     echo ""
 
     if [[ "${ASSUME_YES:-0}" == "1" ]]; then
-        BRANCH="fairydust"
+        BRANCH="asahi"
         info "ASSUME_YES set, defaulting to: $BRANCH"
         return
     fi
 
     local choice
-    read -rp "$(echo -e "${YELLOW}Branch [1/2, default 1]:${NC} ")" choice
+    read -rp "$(echo -e "${YELLOW}Branch [1/2/3, default 1]:${NC} ")" choice
     case "$choice" in
-        2) BRANCH="asahi-wip" ;;
-        *) BRANCH="fairydust" ;;
+        2) BRANCH="fairydust" ;;
+        3) BRANCH="asahi-wip" ;;
+        *) BRANCH="asahi" ;;
     esac
     ok "Building branch: $BRANCH"
 }
