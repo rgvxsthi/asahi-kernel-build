@@ -190,6 +190,50 @@ Say yes and it resets the tree, reapplies `patches/`, and rebuilds. Say no and i
 
 Note that the custom kernel is installed with `make install`, not as an RPM, so `dnf` does not manage it and will never update it on its own — re-running this script is the update mechanism. Your stock Fedora kernel keeps updating through `dnf` as normal and stays bootable in GRUB.
 
+## Asahi ALARM (Arch Linux ARM)
+
+The build script here is Fedora-only — it uses `dnf`, seeds the config from
+`/boot/config-$(uname -r)`, and drives Fedora's `update-m1n1` and GRUB wiring.
+**ALARM users do not need it**, because ALARM builds its kernel from a PKGBUILD
+that already has a patch loop:
+
+```bash
+[[ $src = *.patch ]] || continue
+patch -Np1 < "../$src"
+```
+
+So the fix drops straight in. The patches here are `git format-patch` output and
+apply with plain `patch -Np1`.
+
+```bash
+git clone https://github.com/asahi-alarm/PKGBUILDs.git
+cd PKGBUILDs/linux-asahi
+
+# take the patch from this repo
+curl -LO https://raw.githubusercontent.com/rgvxsthi/asahi-linux-hdmi-sleep-fixer/main/patches/0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch
+
+# add it to the source array
+sed -i "s|^  config .*|&\n  0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch|" PKGBUILD
+
+# refresh checksums (needs pacman-contrib), then build and install
+updpkgsums
+makepkg -si
+```
+
+The patch's sha256 is
+`ceb8617cdb4a196ed88045a77008c14093536bb9a47d51575f0ed30c4cf5853a`
+if you would rather add it to `sha256sums` by hand than run `updpkgsums`.
+
+Verified that the patch applies with `patch -Np1` against
+`AsahiLinux/linux` tag `asahi-7.0.13-1`, which is what ALARM's `linux-asahi`
+currently builds, and that the unfixed `dcp_platform_resume()` is present there.
+The rest of the flow — `makepkg`, mkinitcpio, ALARM's boot wiring — has **not**
+been tested, since this was worked out on Fedora. Reports welcome.
+
+BORE (`patches/0002`) is not covered by these instructions. ALARM's kernel
+config has no `CONFIG_SCHED_BORE`, so it would need adding to `config` as well
+as to `source`.
+
 ## What the script does
 
 1. Installs build dependencies (gcc, Rust toolchain, etc.)
