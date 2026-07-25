@@ -8,6 +8,8 @@ It also enables USB-C DisplayPort alt mode, because it builds on Asahi's `fairyd
 
 > Fork of **[bharambetejas/asahi-fairydust-display](https://github.com/bharambetejas/asahi-fairydust-display)**, which does the actual heavy lifting of building an Asahi kernel correctly. See [Credits](#credits).
 
+**Discussion:** [r/AsahiLinux thread](https://www.reddit.com/r/AsahiLinux/comments/1v65rk7/hdmi_wouldnt_wake_after_sleep_on_mbp_m1_pro/) — reports from other models welcome there.
+
 ## Is this your bug?
 
 Yes, if:
