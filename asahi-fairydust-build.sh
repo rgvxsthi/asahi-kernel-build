@@ -102,6 +102,30 @@ confirm_default_yes() {
     [[ -z "$response" || "$response" =~ ^[Yy]$ ]]
 }
 
+# --- Which distribution are we on ---
+#
+# Sets DISTRO to "fedora" or "alarm". Anything else is unsupported, because the
+# install step has to know how the distro wires up m1n1, the bootloader and the
+# initramfs, and guessing there is how people end up unbootable.
+detect_distro() {
+    local id id_like
+    id="$(. /etc/os-release 2>/dev/null && echo "${ID:-}")"
+    id_like="$(. /etc/os-release 2>/dev/null && echo "${ID_LIKE:-}")"
+
+    case "$id" in
+        fedora) DISTRO="fedora"; return ;;
+        arch|archarm|asahi-alarm) DISTRO="alarm"; return ;;
+    esac
+    case "$id_like" in
+        *fedora*) DISTRO="fedora"; return ;;
+        *arch*)   DISTRO="alarm";  return ;;
+    esac
+
+    error "Unsupported distribution (ID=$id).
+This script handles Fedora Asahi Remix and Asahi ALARM (Arch). On anything
+else, apply patches/*.patch to your kernel source by hand."
+}
+
 # --- Pre-flight Checks ---
 preflight() {
     echo ""
@@ -116,10 +140,10 @@ preflight() {
         error "Do not run this script as root. Run as your normal user (sudo will be used when needed)."
     fi
 
-    # Check we're on Fedora Asahi
-    if ! grep -qi "fedora" /etc/os-release 2>/dev/null; then
-        error "This script is designed for Fedora Asahi Remix. Detected a different OS."
-    fi
+    # Fedora and Asahi ALARM (Arch) take completely different paths: Fedora
+    # builds the tree directly, ALARM goes through its linux-asahi PKGBUILD.
+    detect_distro
+    info "Distribution: $DISTRO"
 
     if [[ "$(uname -m)" != "aarch64" ]]; then
         error "This script is for Apple Silicon (aarch64) only. Detected: $(uname -m)"
@@ -738,9 +762,142 @@ print_summary() {
     fi
 }
 
+# --- Asahi ALARM (Arch) path ---
+#
+# ALARM does not need this script to build a kernel. Its linux-asahi PKGBUILD
+# already loops over source entries ending in .patch and applies them with
+# patch -Np1, so the whole job is: drop the patches in, register them, rebuild.
+#
+# This path therefore skips branch selection, config seeding, m1n1 and GRUB
+# entirely. The PKGBUILD pins its own upstream tag and Arch's packaging handles
+# the install, which is more reliable than anything reimplemented here.
+alarm_build() {
+    local script_dir patch_dir pkgdir chosen p name subject want wanted
+
+    script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+    patch_dir="$script_dir/patches"
+    pkgdir="${ALARM_PKGBUILDS_DIR:-$HOME/PKGBUILDs}"
+
+    echo ""
+    info "=== Asahi ALARM build (via linux-asahi PKGBUILD) ==="
+    warn "The patch itself is verified against ALARM's kernel tag, but the"
+    warn "makepkg and install steps have not been tested on ALARM. Your"
+    warn "existing kernel package stays installed until makepkg succeeds."
+    echo ""
+
+    if [[ $EUID -eq 0 ]]; then
+        error "makepkg refuses to run as root. Run as your normal user."
+    fi
+
+    info "=== Step 1/5: dependencies ==="
+    # pacman-contrib provides updpkgsums, which regenerates the checksum arrays
+    # after adding a source entry.
+    sudo pacman -S --needed --noconfirm base-devel git pacman-contrib
+
+    info "=== Step 2/5: linux-asahi PKGBUILD ==="
+    if [[ -d "$pkgdir/.git" ]]; then
+        info "Updating $pkgdir"
+        git -C "$pkgdir" pull --ff-only 2>&1 | tee -a "$LOG_FILE"
+    else
+        git clone https://github.com/asahi-alarm/PKGBUILDs.git "$pkgdir" 2>&1 | tee -a "$LOG_FILE"
+    fi
+
+    cd "$pkgdir/linux-asahi" || error "linux-asahi not found in $pkgdir"
+
+    # Start from a clean PKGBUILD so re-runs do not stack duplicate entries.
+    git checkout -- PKGBUILD 2>/dev/null || true
+
+    info "=== Step 3/5: choosing patches ==="
+    chosen=()
+    for p in "$patch_dir"/*.patch; do
+        [[ -e "$p" ]] || continue
+        name="$(basename "$p")"
+        subject="$(sed -n 's/^Subject: \[PATCH[^]]*\] //p' "$p" | head -1)"
+        [[ -z "$subject" ]] && subject="$name"
+
+        if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
+            info "SKIP_PATCHES is set, skipping: $subject"
+            continue
+        fi
+
+        if [[ -n "${PATCHES:-}" ]]; then
+            wanted=0
+            for want in ${PATCHES//,/ }; do
+                [[ "${name,,}" == *"${want,,}"* ]] && wanted=1
+            done
+            [[ "$wanted" -eq 0 ]] && { info "Not selected by PATCHES: $subject"; continue; }
+        elif ! confirm_default_yes "Apply: $subject"; then
+            info "Skipped: $name"
+            continue
+        fi
+
+        # BORE needs a config symbol as well as a patch, and ALARM's config has
+        # no CONFIG_SCHED_BORE. Say so rather than producing a kernel where the
+        # patch is in but the feature is compiled out.
+        if [[ "$name" == *BORE* ]]; then
+            warn "ALARM's kernel config has no CONFIG_SCHED_BORE."
+            warn "The patch will apply but BORE will not be enabled unless you"
+            warn "also add CONFIG_SCHED_BORE=y to the 'config' file here."
+        fi
+
+        cp "$p" ./
+        chosen+=("$name")
+        ok "Staged: $subject"
+    done
+
+    if [[ ${#chosen[@]} -eq 0 ]]; then
+        error "No patches selected. Nothing to do."
+    fi
+
+    info "=== Step 4/5: registering patches in PKGBUILD ==="
+    for name in "${chosen[@]}"; do
+        if grep -qF "$name" PKGBUILD; then
+            info "Already listed: $name"
+            continue
+        fi
+        # Insert immediately before the closing paren of source=(). Appending
+        # after the 'config' entry instead would drag its trailing comment
+        # onto the new line.
+        sed -i "/^source=(/,/^)/ { /^)/ i\\  $name
+}" PKGBUILD
+        grep -qF "$name" PKGBUILD || error "Could not add $name to the source array in PKGBUILD.
+The PKGBUILD layout has probably changed. Add it to source=() by hand and re-run."
+        ok "Registered: $name"
+    done
+
+    info "Refreshing checksums with updpkgsums ..."
+    updpkgsums 2>&1 | tee -a "$LOG_FILE"
+
+    echo ""
+    info "PKGBUILD source array now reads:"
+    sed -n '/^source=(/,/^)/p' PKGBUILD | tee -a "$LOG_FILE"
+    echo ""
+
+    info "=== Step 5/5: build and install ==="
+    if ! confirm_default_yes "Run makepkg -si now? (builds and installs the kernel package)"; then
+        info "Stopping here. To finish manually:"
+        info "  cd $pkgdir/linux-asahi && makepkg -si"
+        return
+    fi
+
+    makepkg -si 2>&1 | tee -a "$LOG_FILE"
+
+    echo ""
+    ok "Done. Reboot and verify with:"
+    echo "    uname -r"
+    echo "    cat /sys/class/drm/card*-HDMI-A-1/status   # before and after a suspend"
+}
+
 # --- Main ---
 main() {
     preflight
+
+    # ALARM has its own pipeline; nothing below this applies to it.
+    if [[ "$DISTRO" == "alarm" ]]; then
+        alarm_build
+        return
+    fi
+
     select_branch
     install_deps
     clone_source
