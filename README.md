@@ -1,10 +1,17 @@
-# Asahi Linux External Display Enabler (Fairydust)
+# Asahi Linux External Display Enabler (Fairydust) — patched fork
 
-Enable USB-C external display output on Apple Silicon Macs running Fedora Asahi Remix.
+Enable USB-C external display output on Apple Silicon Macs running Fedora Asahi Remix, **and** fix the built-in HDMI port staying dark after suspend.
+
+> Fork of [bharambetejas/asahi-fairydust-display](https://github.com/bharambetejas/asahi-fairydust-display). See [Credits](#credits). Everything generic here has been offered back upstream.
 
 ## What is this?
 
 Apple Silicon MacBooks (M1/M2) running Asahi Linux cannot output to external displays via USB-C in the stable kernel. The Asahi team has developed experimental support in their `fairydust` kernel branch. This script automates building and installing that kernel.
+
+This fork adds two things:
+
+1. A `patches/` step, carrying a fix for the built-in HDMI port not coming back after suspend/resume — a separate bug from the USB-C one, and **not** fixed by `fairydust` itself. See [Patches](#patches).
+2. Build fixes: a hard `rust/core.o` failure when rustup is installed, unattended-run support, and environment-overridable config.
 
 ## Supported Hardware
 
@@ -155,9 +162,16 @@ sudo update-m1n1
 
 ## Credits
 
-- **Asahi Linux team** (Sven, Janne, marcan) for the fairydust branch and years of reverse engineering
-- **Asahi community** for testing and documentation
-- Built following the process documented at [asahilinux.org](https://asahilinux.org/2026/02/progress-report-6-19/)
+This repository is a fork and stands almost entirely on other people's work.
+
+- **[bharambetejas/asahi-fairydust-display](https://github.com/bharambetejas/asahi-fairydust-display)** by Tejas Bharambe — the original build script, and the reason any of this was approachable. It works out the genuinely hard parts: seeding the config from your running kernel, getting Rust and the GPU driver enabled so you don't end up on llvmpipe, and wiring up m1n1 and GRUB correctly. This fork only adds a patch step and a few build fixes on top. The improvements here have been sent back upstream as pull requests.
+- **[Asahi Linux team](https://asahilinux.org/)** (marcan, Sven Peter, Janne Grunau, and everyone else) for the kernel itself, the `fairydust` branch, and years of reverse engineering that made Linux on Apple Silicon exist at all. The HDMI fix in `patches/` is a two-line change to code they wrote from scratch by reading hardware nobody documented.
+- **[r/AsahiLinux](https://www.reddit.com/r/AsahiLinux/)** and the wider Asahi community for the bug reports, testing, and troubleshooting threads that made the HDMI suspend problem identifiable as a real, reproducible issue rather than one broken machine.
+- Build process follows the [Asahi progress report](https://asahilinux.org/2026/02/progress-report-6-19/).
+
+Bug reports that helped confirm the HDMI issue:
+[Fedora discussion](https://discussion.fedoraproject.org/t/hdmi-output-after-suspend-to-ram-on-macbook-pro/101597),
+[AsahiLinux/docs#94](https://github.com/AsahiLinux/docs/issues/94).
 
 ## Disclaimer
 
