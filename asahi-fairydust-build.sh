@@ -39,9 +39,12 @@
 set -eo pipefail
 
 # --- Configuration ---
-CLONE_DIR="$HOME/linux-fairydust"
-BRANCH="fairydust"
-LOCALVERSION="-fairydust"
+# Overridable from the environment, e.g. BRANCH=rgvx/experiment ./asahi-fairydust-build.sh
+REPO_URL="${REPO_URL:-https://github.com/rgvxsthi/linux.git}"
+CLONE_DIR="${CLONE_DIR:-$HOME/Projects/Github/linux}"
+BRANCH="${BRANCH:-rgvx/fairydust}"
+LOCALVERSION="${LOCALVERSION:--rgvx}"
+JOBS="${JOBS:-$(nproc)}"
 DISPLAY_SCRIPT="$HOME/display-setup.sh"
 LOG_FILE="$HOME/fairydust-build.log"
 
@@ -188,19 +191,21 @@ clone_source() {
     echo ""
     info "=== Step 2/9: Cloning fairydust kernel source ==="
 
-    if [[ -d "$CLONE_DIR" ]]; then
-        warn "Directory $CLONE_DIR already exists."
-        if confirm "Delete and re-clone?"; then
-            rm -rf "$CLONE_DIR"
-        else
-            info "Using existing source tree."
-            cd "$CLONE_DIR"
-            return
+    if [[ -d "$CLONE_DIR/.git" ]]; then
+        info "Using existing source tree at $CLONE_DIR"
+        cd "$CLONE_DIR"
+        # Make sure we are actually on the branch we intend to build.
+        if [[ "$(git branch --show-current)" != "$BRANCH" ]]; then
+            info "Checking out $BRANCH"
+            git checkout "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
         fi
+        ok "Branch: $(git branch --show-current)"
+        info "HEAD:   $(git log --oneline -1)"
+        return
     fi
 
-    git clone https://github.com/AsahiLinux/linux.git \
-        --branch "$BRANCH" --depth 1 --single-branch "$CLONE_DIR" 2>&1 | tee -a "$LOG_FILE"
+    git clone "$REPO_URL" --branch "$BRANCH" --single-branch \
+        --filter=blob:none "$CLONE_DIR" 2>&1 | tee -a "$LOG_FILE"
 
     cd "$CLONE_DIR"
     ok "Source cloned to $CLONE_DIR"
@@ -273,6 +278,22 @@ See Documentation/rust/quick-start.rst in the kernel source."
     # Ensure Apple DRM is enabled
     scripts/config --module DRM_APPLE
 
+    # --- Local tuning ---------------------------------------------------
+    # Most of what CachyOS enables (HZ_1000, NO_HZ_FULL, PREEMPT_DYNAMIC,
+    # LRU_GEN, THP, SCHED_CLASS_EXT) is already on in the Fedora Asahi config,
+    # and its x86 march tuning does not apply to aarch64. These are the deltas
+    # that are actually worth setting here.
+
+    # Defer RCU callbacks while idle. Meaningful battery win on a laptop.
+    # Requires RCU_NOCB_CPU, which the Fedora Asahi config already sets.
+    scripts/config --enable RCU_LAZY
+
+    # BORE comes from a source patch on the kernel branch. It defaults to y,
+    # but set it explicitly so a config regression is loud rather than silent.
+    # Runtime-tunable via /proc/sys/kernel/sched_bore, so it can be turned off
+    # without rebuilding if it misbehaves.
+    scripts/config --enable SCHED_BORE
+
     # Set local version tag
     sed -i "s/CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION=\"${LOCALVERSION}\"/" .config
 
@@ -311,12 +332,12 @@ See Documentation/rust/quick-start.rst in the kernel source."
 build_kernel() {
     echo ""
     info "=== Step 4/9: Building kernel (this will take a while) ==="
-    info "Using $(nproc) parallel jobs"
+    info "Using $JOBS parallel jobs"
     info "Started at: $(date)"
 
     cd "$CLONE_DIR"
 
-    log_and_run make -j$(nproc)
+    log_and_run make -j$JOBS
 
     ok "Kernel build completed at: $(date)"
 }
