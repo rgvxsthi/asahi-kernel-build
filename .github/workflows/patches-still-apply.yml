@@ -17,6 +17,14 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # asahi is the release branch, and what distro kernels build.
+        # fairydust is asahi plus the USB-C DisplayPort work, so patch 0003
+        # is expected to be already present there rather than applicable.
+        branch: [asahi, fairydust]
+    name: ${{ matrix.branch }}
     steps:
       - name: Check out this repo
         uses: actions/checkout@v4
@@ -27,14 +35,14 @@ jobs:
         run: |
           # Blobless keeps this to a couple of minutes rather than pulling
           # the full history of the kernel.
-          git clone --filter=blob:none --branch fairydust --single-branch \
+          git clone --filter=blob:none --branch ${{ matrix.branch }} --single-branch \
             https://github.com/AsahiLinux/linux.git kernel
 
       - name: Report the base being tested
         working-directory: kernel
         run: |
           echo "kernel version: $(make kernelversion)"
-          echo "fairydust HEAD: $(git log --oneline -1)"
+          echo "${{ matrix.branch }} HEAD: $(git log --oneline -1)"
 
       - name: Try each patch
         working-directory: kernel
@@ -46,7 +54,10 @@ jobs:
               echo "::notice::applies cleanly: $name"
               git apply "$p"
             elif git apply --reverse --check "$p" 2>/dev/null; then
-              echo "::warning::already present upstream, can probably be dropped: $name"
+              # Expected for 0003 on fairydust, since that patch *is* the
+              # fairydust delta. On the release branch it would instead mean
+              # the change has landed upstream and the file can be dropped.
+              echo "::notice::already present on ${{ matrix.branch }}: $name"
             else
               echo "::error::no longer applies: $name"
               git apply --check "$p" || true
