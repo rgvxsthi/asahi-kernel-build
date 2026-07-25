@@ -48,6 +48,19 @@ JOBS="${JOBS:-$(nproc)}"
 DISPLAY_SCRIPT="$HOME/display-setup.sh"
 LOG_FILE="$HOME/fairydust-build.log"
 
+# Prefer the distro Rust toolchain over anything rustup installed.
+#
+# The kernel compiles the Rust core library from source, so rustc and the
+# rust-src tree must be the same version. A rustup toolchain in ~/.cargo/bin
+# takes precedence on PATH and is usually a different version from the
+# rust-src RPM, which makes rust/core.o fail to build with errors like
+# "attributes starting with `rustc` are reserved" and
+# "cannot use `const` closures outside of const contexts".
+if [[ -x /usr/bin/rustc && -d /usr/lib/rustlib/src/rust/library ]]; then
+    export PATH="/usr/bin:$PATH"
+    export RUST_LIB_SRC="/usr/lib/rustlib/src/rust/library"
+fi
+
 # --- Colors ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
