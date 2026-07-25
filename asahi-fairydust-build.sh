@@ -39,9 +39,10 @@
 set -eo pipefail
 
 # --- Configuration ---
-# Overridable from the environment, e.g. BRANCH=rgvx/experiment ./asahi-fairydust-build.sh
+# Overridable from the environment, e.g. BRANCH=my-branch ./asahi-fairydust-build.sh
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_URL="${REPO_URL:-https://github.com/rgvxsthi/linux.git}"
-CLONE_DIR="${CLONE_DIR:-$HOME/Projects/Github/linux}"
+CLONE_DIR="${CLONE_DIR:-$HOME/linux-fairydust}"
 BRANCH="${BRANCH:-rgvx/fairydust}"
 LOCALVERSION="${LOCALVERSION:--rgvx}"
 JOBS="${JOBS:-$(nproc)}"
@@ -230,6 +231,48 @@ clone_source() {
     ok "Source cloned to $CLONE_DIR"
     info "Branch: $(git branch --show-current)"
     info "HEAD:   $(git log --oneline -1)"
+}
+
+# --- Apply local patches on top of the branch ---
+#
+# Anything in patches/*.patch is applied in filename order. Patches that are
+# already present in the tree are skipped, so re-running the script on an
+# existing checkout is safe. Set SKIP_PATCHES=1 to build the branch untouched.
+apply_patches() {
+    local patch_dir="$SCRIPT_DIR/patches"
+
+    if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
+        info "SKIP_PATCHES is set, building the branch as-is"
+        return
+    fi
+
+    if [[ ! -d "$patch_dir" ]] || ! compgen -G "$patch_dir/*.patch" >/dev/null; then
+        info "No patches to apply"
+        return
+    fi
+
+    cd "$CLONE_DIR" || error "Source tree missing at $CLONE_DIR"
+
+    local p
+    for p in "$patch_dir"/*.patch; do
+        local name
+        name="$(basename "$p")"
+
+        # Already applied, e.g. re-running against an existing checkout.
+        if git apply --reverse --check "$p" 2>/dev/null; then
+            info "Already applied, skipping: $name"
+            continue
+        fi
+
+        if ! git apply --check "$p" 2>/dev/null; then
+            error "Patch does not apply cleanly against $BRANCH: $name
+The branch has probably moved on and the patch needs a refresh, or the
+change is already upstream. Re-run with SKIP_PATCHES=1 to build without it."
+        fi
+
+        git apply "$p" 2>&1 | tee -a "$LOG_FILE"
+        ok "Applied: $name"
+    done
 }
 
 # --- Step 3: Configure Kernel ---
@@ -545,6 +588,7 @@ main() {
     preflight
     install_deps
     clone_source
+    apply_patches
     configure_kernel
     build_kernel
     install_kernel
