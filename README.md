@@ -124,9 +124,36 @@ Everything is environment-overridable:
 
 ## Patches
 
-Everything in `patches/*.patch` is applied in filename order after cloning and before configuring. Already-applied patches are detected and skipped, so re-runs are safe. A patch that no longer applies is a hard error rather than a silent skip — if that happens, the change has probably landed upstream and the file can be deleted.
+Everything in `patches/*.patch` is applied in filename order after cloning and before configuring. Already-applied patches are detected and skipped, so re-runs are safe. A patch that no longer applies is a hard error rather than a silent skip.
+
+| Patch | What it does |
+|---|---|
+| `0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch` | The HDMI-after-suspend fix described above |
+| `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
 
 Drop your own `.patch` files in there and they will be picked up.
+
+A [scheduled CI job](.github/workflows/patches-still-apply.yml) test-applies these against upstream `fairydust` every week, so a patch going stale surfaces there rather than two hours into someone's build.
+
+## Pinned vs tracking upstream
+
+There are two ways to build, and they trade off differently.
+
+**Pinned (the default).** Builds from `rgvxsthi/linux` branch `rgvx/fairydust`, which is upstream `fairydust` with both patches already committed. Reproducible, and it is the exact tree that was tested. You only move when you choose to:
+
+```bash
+./sync-upstream.sh          # rebase the patch branch onto latest upstream fairydust
+git push --force-with-lease origin rgvx/fairydust
+./asahi-fairydust-build.sh  # rebuild
+```
+
+**Tracking upstream.** Builds whatever upstream `fairydust` currently is, applying `patches/` on top at build time. Every rebuild automatically picks up upstream changes, and there is no fork to maintain:
+
+```bash
+REPO_URL=https://github.com/AsahiLinux/linux.git BRANCH=fairydust ./asahi-fairydust-build.sh
+```
+
+The trade is that you get whatever upstream happens to be that day, which may be a kernel version nobody has tested this against. Pinned is the safer default; tracking is the better answer if you want upstream fixes without babysitting a fork.
 
 ## What the script does
 

@@ -1,0 +1,56 @@
+name: Patches still apply
+
+# Upstream fairydust moves. When it does, one of two things is true: the
+# patches here still apply, or they don't because the change landed upstream
+# or the surrounding code was rewritten. Either way it is better to find out
+# from a scheduled job than from someone two hours into a kernel build.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays, 06:00 UTC
+  push:
+    paths:
+      - 'patches/**'
+      - '.github/workflows/patches-still-apply.yml'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repo
+        uses: actions/checkout@v4
+        with:
+          path: tools
+
+      - name: Check out upstream fairydust
+        run: |
+          # Blobless keeps this to a couple of minutes rather than pulling
+          # the full history of the kernel.
+          git clone --filter=blob:none --branch fairydust --single-branch \
+            https://github.com/AsahiLinux/linux.git kernel
+
+      - name: Report the base being tested
+        working-directory: kernel
+        run: |
+          echo "kernel version: $(make kernelversion)"
+          echo "fairydust HEAD: $(git log --oneline -1)"
+
+      - name: Try each patch
+        working-directory: kernel
+        run: |
+          failed=0
+          for p in ../tools/patches/*.patch; do
+            name="$(basename "$p")"
+            if git apply --check "$p" 2>/dev/null; then
+              echo "::notice::applies cleanly: $name"
+              git apply "$p"
+            elif git apply --reverse --check "$p" 2>/dev/null; then
+              echo "::warning::already present upstream, can probably be dropped: $name"
+            else
+              echo "::error::no longer applies: $name"
+              git apply --check "$p" || true
+              failed=1
+            fi
+          done
+          exit "$failed"
