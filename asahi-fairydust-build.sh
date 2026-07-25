@@ -385,6 +385,23 @@ clone_source() {
     info "HEAD:   $(git log --oneline -1)"
 }
 
+# --- Read a patch's human-readable metadata ---
+#
+# Patches carry X-Summary and X-Who-Needs-It headers ahead of the diff, which
+# patch(1) and git apply both ignore. Falls back to the git Subject, then the
+# filename, so an unannotated patch dropped into patches/ still works.
+patch_summary() {
+    local p="$1" v
+    v="$(sed -n 's/^X-Summary: //p' "$p" | head -1)"
+    [[ -z "$v" ]] && v="$(sed -n 's/^Subject: \[PATCH[^]]*\] //p' "$p" | head -1)"
+    [[ -z "$v" ]] && v="$(basename "$p")"
+    printf '%s' "$v"
+}
+
+patch_audience() {
+    sed -n 's/^X-Who-Needs-It: //p' "$1" | head -1
+}
+
 # --- Apply local patches on top of the branch ---
 #
 # Anything in patches/*.patch is offered in filename order, one prompt each,
@@ -415,36 +432,40 @@ apply_patches() {
     echo ""
     info "Patches available in $patch_dir"
 
-    local p name subject wanted
+    local p name subject audience wanted want explicitly_requested
     for p in "$patch_dir"/*.patch; do
         name="$(basename "$p")"
 
         # The Subject: line of a git format-patch file is a ready-made
         # one-line description, so patches are self-describing.
-        subject="$(sed -n 's/^Subject: \[PATCH[^]]*\] //p' "$p" | head -1)"
-        [[ -z "$subject" ]] && subject="$name"
+        subject="$(patch_summary "$p")"
+        audience="$(patch_audience "$p")"
 
         # Already applied, e.g. re-running against an existing checkout, or
         # building a branch that already carries the change as a commit.
         if git apply --reverse --check "$p" 2>/dev/null; then
-            info "Already in this tree, skipping: $subject"
+            info "Already in $BRANCH, nothing to do: $subject"
             continue
         fi
 
+        # Whether the user asked for this one by name changes how loud we are
+        # about it not applying.
+        explicitly_requested=0
+        if [[ -n "${PATCHES:-}" ]]; then
+            for want in ${PATCHES//,/ }; do
+                [[ "${name,,}" == *"${want,,}"* ]] && explicitly_requested=1
+            done
+        fi
+
         if ! git apply --check "$p" 2>/dev/null; then
-            warn "Does not apply against $BRANCH: $name"
-            warn "Either the branch moved on, or this patch targets a different"
-            warn "kernel version (the BORE patch is cut for 7.0, for instance)."
-            # Non-interactive runs fail loudly rather than quietly producing a
-            # kernel missing something the caller asked for.
-            if [[ "${ASSUME_YES:-0}" == "1" || -n "${PATCHES:-}" ]]; then
-                error "Refusing to continue without $name in a non-interactive run.
-Re-run with SKIP_PATCHES=1, or drop it from PATCHES, to build without it."
+            # Not applicable to this branch is a normal, expected outcome, not
+            # a problem. Only make noise if it was specifically asked for.
+            if [[ "$explicitly_requested" -eq 1 ]]; then
+                error "You asked for $name via PATCHES, but it does not apply to $BRANCH.
+It probably targets a different kernel version. Drop it from PATCHES, or
+choose a branch it fits."
             fi
-            if ! confirm "Continue the build without this patch?"; then
-                error "Stopping at your request."
-            fi
-            info "Continuing without: $name"
+            info "Not applicable to $BRANCH, skipping: $subject"
             continue
         fi
 
@@ -461,9 +482,13 @@ Re-run with SKIP_PATCHES=1, or drop it from PATCHES, to build without it."
                 info "Not selected by PATCHES, skipping: $subject"
                 continue
             fi
-        elif ! confirm_default_yes "Apply: $subject"; then
-            info "Skipped: $name"
-            continue
+        else
+            echo ""
+            [[ -n "$audience" ]] && echo "    $audience"
+            if ! confirm_default_yes "Apply: $subject"; then
+                info "Skipped: $name"
+                continue
+            fi
         fi
 
         git apply --whitespace=nowarn "$p" 2>&1 | tee -a "$LOG_FILE"
@@ -843,7 +868,7 @@ refresh_fairydust_patch() {
 # entirely. The PKGBUILD pins its own upstream tag and Arch's packaging handles
 # the install, which is more reliable than anything reimplemented here.
 alarm_build() {
-    local script_dir patch_dir pkgdir chosen p name subject want wanted
+    local script_dir patch_dir pkgdir chosen p name subject audience want wanted
 
     script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
     patch_dir="$script_dir/patches"
@@ -883,8 +908,8 @@ alarm_build() {
     for p in "$patch_dir"/*.patch; do
         [[ -e "$p" ]] || continue
         name="$(basename "$p")"
-        subject="$(sed -n 's/^Subject: \[PATCH[^]]*\] //p' "$p" | head -1)"
-        [[ -z "$subject" ]] && subject="$name"
+        subject="$(patch_summary "$p")"
+        audience="$(patch_audience "$p")"
 
         if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
             info "SKIP_PATCHES is set, skipping: $subject"
@@ -897,9 +922,13 @@ alarm_build() {
                 [[ "${name,,}" == *"${want,,}"* ]] && wanted=1
             done
             [[ "$wanted" -eq 0 ]] && { info "Not selected by PATCHES: $subject"; continue; }
-        elif ! confirm_default_yes "Apply: $subject"; then
-            info "Skipped: $name"
-            continue
+        else
+            echo ""
+            [[ -n "$audience" ]] && echo "    $audience"
+            if ! confirm_default_yes "Apply: $subject"; then
+                info "Skipped: $name"
+                continue
+            fi
         fi
 
         # BORE needs a config symbol as well as a patch, and ALARM's config has

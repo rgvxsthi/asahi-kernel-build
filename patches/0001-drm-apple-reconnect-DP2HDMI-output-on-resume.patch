@@ -2,6 +2,8 @@ From a0ee8180974f1dc609cf474cb7eb11d0808e440a Mon Sep 17 00:00:00 2001
 From: rgvxsthi <raghavsethi@yandex.com>
 Date: Sat, 25 Jul 2026 19:31:40 +1000
 Subject: [PATCH] drm/apple: reconnect DP2HDMI output on resume
+X-Summary: Fixes the built-in HDMI port staying dark after suspend
+X-Who-Needs-It: Everyone with a physical HDMI port (MacBook Pro 14/16, Mac mini). This is the point of this repo.
 
 On systems with a built-in HDMI port behind a DP2HDMI bridge,
 dcp_platform_suspend() disables the HPD interrupt and tears the DPTX

@@ -2,6 +2,8 @@ From eaded495db09bbfe3b137c16fc17b78c89718ca6 Mon Sep 17 00:00:00 2001
 From: rgvxsthi <raghavsethi@yandex.com>
 Date: Sat, 25 Jul 2026 19:32:31 +1000
 Subject: [PATCH] sched: add BORE (Burst-Oriented Response Enhancer)
+X-Summary: BORE scheduler - keeps the desktop responsive under heavy load
+X-Who-Needs-It: Optional and opinionated. Needs a 7.0 kernel and CONFIG_SCHED_BORE. Runtime-tunable via /proc/sys/kernel/sched_bore.
 
 Import the BORE scheduler patch from firelzrd/bore-scheduler, version
 6.6.3, patches/stable/linux-7.0-bore.

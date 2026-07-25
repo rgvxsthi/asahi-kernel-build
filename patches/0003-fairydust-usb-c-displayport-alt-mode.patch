@@ -1,5 +1,7 @@
 From: Asahi Linux contributors <asahi@lists.linux.dev>
 Subject: [PATCH] fairydust: USB-C DisplayPort alt mode (13 commits)
+X-Summary: USB-C DisplayPort output (the fairydust work)
+X-Who-Needs-It: Only needed if your kernel is built from the release branch. Redundant on the fairydust branch, where it is detected and skipped.
 
 Squashed range asahi-7.0.13-1..fairydust from AsahiLinux/linux, which is
 exactly the delta between the release branch and the fairydust branch:

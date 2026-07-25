@@ -134,13 +134,31 @@ Everything in `patches/*.patch` is applied in filename order after cloning and b
 | `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
 | `0003-fairydust-usb-c-displayport-alt-mode.patch` | USB-C DisplayPort alt mode, for distros that build the release branch rather than `fairydust`. See below. |
 
-Each patch is offered as its own prompt, defaulting to yes, so you can take the HDMI fix and decline BORE:
+Patches are self-describing. Each carries `X-Summary` and `X-Who-Needs-It`
+headers ahead of the diff, which `patch` and `git apply` ignore, so the prompt
+says what the patch does and who needs it rather than showing a raw kernel
+commit subject. An unannotated patch dropped into `patches/` still works — it
+falls back to the `Subject:` line, then the filename.
+
+Patches that do not apply to the branch you chose are **not offered at all**.
+They are reported as skipped, because "targets a different kernel version" is a
+normal outcome, not a problem. The exception is a patch you named explicitly via
+`PATCHES=`, which fails loudly instead of being quietly dropped.
+
+Each remaining patch is offered as its own prompt, defaulting to yes, so you can take the HDMI fix and decline BORE:
 
 ```
 [INFO]  Patches available in ./patches
-Apply: drm/apple: reconnect DP2HDMI output on resume [Y/n]: 
-Apply: sched: add BORE (Burst-Oriented Response Enhancer) [Y/n]: n
+
+    Everyone with a physical HDMI port (MacBook Pro 14/16, Mac mini).
+    This is the point of this repo.
+Apply: Fixes the built-in HDMI port staying dark after suspend [Y/n]:
+
+    Optional and opinionated. Needs a 7.0 kernel and CONFIG_SCHED_BORE.
+Apply: BORE scheduler - keeps the desktop responsive under heavy load [Y/n]: n
 [INFO]  Skipped: 0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch
+
+[INFO]  Already in fairydust, nothing to do: USB-C DisplayPort output
 ```
 
 Prompt text comes from each patch's `Subject:` line, so patches are self-describing. Non-interactive equivalents:
