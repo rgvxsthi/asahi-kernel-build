@@ -249,8 +249,27 @@ Caveats, inherited from upstream rather than introduced here:
   laptop.
 - Only one USB-C port drives a display.
 
+**It tracks upstream rather than freezing.** A static patch would go stale two
+ways: upstream adding commits to `fairydust`, and ALARM bumping its kernel tag.
+So on ALARM the script reads the tag the PKGBUILD actually pins (via
+`makepkg --printsrcinfo`, which expands the PKGBUILD's own variables) and
+recomputes the range against it:
+
+```
+https://github.com/AsahiLinux/linux/compare/<that tag>...fairydust.diff
+```
+
+The file in `patches/` is a fallback used when the tag cannot be determined or
+GitHub is unreachable, and the script says which one it used. `FAIRYDUST_REFRESH=0`
+forces the shipped snapshot.
+
+The Fedora path never needed this: choosing the `fairydust` branch clones it
+directly, so it is current by construction and patch 0003 self-skips.
+
 Verified: applies with `patch -Np1` to `asahi-7.0.13-1`, coexists with patch
-0001, and reverse-detects on a `fairydust` tree. Not boot-tested — see above.
+0001, reverse-detects on a `fairydust` tree, and the regenerated patch is
+byte-identical to the shipped one right now and applies cleanly. Not
+boot-tested — see above.
 
 BORE needs more than a patch on ALARM: its kernel `config` has no
 `CONFIG_SCHED_BORE`, so the patch would apply but the feature would compile out.

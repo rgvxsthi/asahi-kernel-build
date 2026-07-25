@@ -779,6 +779,60 @@ print_summary() {
     fi
 }
 
+# --- Regenerate the fairydust delta against the tag the PKGBUILD pins ---
+#
+# patches/0003 is a snapshot of asahi-<ver>...fairydust taken when it was
+# generated. Two things make a snapshot go stale: upstream adding commits to
+# fairydust, and the distro bumping its kernel tag. Both are normal, and either
+# leaves users with an out-of-date or non-applying patch.
+#
+# So when building on ALARM, recompute the range against whatever tag the
+# PKGBUILD actually pins, and fall back to the shipped snapshot if that is not
+# possible (no network, GitHub unreachable, unexpected PKGBUILD layout).
+#
+# Sets FAIRYDUST_PATCH to the file to use.
+refresh_fairydust_patch() {
+    local shipped="$1" tag url tmp
+    FAIRYDUST_PATCH="$shipped"
+
+    if [[ "${FAIRYDUST_REFRESH:-1}" != "1" ]]; then
+        info "FAIRYDUST_REFRESH=0, using the shipped snapshot"
+        return
+    fi
+
+    # --printsrcinfo expands the PKGBUILD's own variables, so this tracks the
+    # tag correctly even when the version scheme changes.
+    tag="$(makepkg --printsrcinfo 2>/dev/null \
+        | grep -oE 'archive/[^[:space:]]+\.tar\.gz' \
+        | head -1 | sed 's|archive/||; s|\.tar\.gz$||')"
+
+    if [[ -z "$tag" ]]; then
+        warn "Could not determine the kernel tag from the PKGBUILD."
+        warn "Using the shipped snapshot, which may not apply."
+        return
+    fi
+
+    info "PKGBUILD builds tag: $tag"
+    url="https://github.com/AsahiLinux/linux/compare/${tag}...fairydust.diff"
+    tmp="$(mktemp)"
+
+    if ! curl -fsSL "$url" -o "$tmp" || [[ ! -s "$tmp" ]]; then
+        warn "Could not fetch $url"
+        warn "Using the shipped snapshot instead."
+        rm -f "$tmp"
+        return
+    fi
+
+    # Keep the descriptive header from the shipped patch so the prompt still
+    # reads sensibly, then append the freshly computed range.
+    local out="$PWD/0003-fairydust-usb-c-displayport-alt-mode.patch"
+    { sed -n '1,/^---$/p' "$shipped"; cat "$tmp"; } > "$out"
+    rm -f "$tmp"
+
+    ok "Regenerated the fairydust delta against $tag ($(grep -c '^diff --git' "$out") files)"
+    FAIRYDUST_PATCH="$out"
+}
+
 # --- Asahi ALARM (Arch) path ---
 #
 # ALARM does not need this script to build a kernel. Its linux-asahi PKGBUILD
@@ -857,7 +911,12 @@ alarm_build() {
             warn "also add CONFIG_SCHED_BORE=y to the 'config' file here."
         fi
 
-        cp "$p" ./
+        if [[ "$name" == *fairydust* ]]; then
+            refresh_fairydust_patch "$p"
+            [[ "$FAIRYDUST_PATCH" != "$PWD/$name" ]] && cp "$FAIRYDUST_PATCH" ./
+        else
+            cp "$p" ./
+        fi
         chosen+=("$name")
         ok "Staged: $subject"
     done
