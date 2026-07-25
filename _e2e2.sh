@@ -1021,4 +1021,4 @@ main() {
     print_summary
 }
 
-main "$@"
+

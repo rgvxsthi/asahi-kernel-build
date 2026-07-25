@@ -34,23 +34,41 @@ echo "  Asahi Linux Fairydust Kernel Uninstaller"
 echo "============================================================"
 echo ""
 
-# Safety check — don't uninstall while running fairydust
-if uname -r | grep -q "fairydust"; then
-    error "You are currently running the fairydust kernel ($(uname -r)).
-Reboot into your stock Fedora Asahi kernel first, then run this script."
+# Which kernels count as ours. LOCALVERSION is what the build script tags the
+# kernel with, and it has changed over time, so match the current default plus
+# the suffixes earlier builds used. Anything installed by hand with a custom
+# LOCALVERSION can be matched by exporting the same value here.
+#
+# Matching only "fairydust" was a real bug: once the default became -hdmifix,
+# this script reported that there was nothing to uninstall while a custom
+# kernel was plainly installed, and the safety check below never fired.
+KERNEL_SUFFIXES="${LOCALVERSION:--hdmifix} -fairydust -rgvx"
+KVER_PATTERN="$(echo "$KERNEL_SUFFIXES" | tr ' ' '\n' | grep -v '^$' | sed 's/^-//' | paste -sd'|')"
+
+# Safety check — don't uninstall the kernel we are currently running
+if uname -r | grep -qE "$KVER_PATTERN"; then
+    error "You are currently running a custom kernel ($(uname -r)).
+Reboot into your stock Asahi kernel first, then run this script."
 fi
 
 info "Current kernel: $(uname -r)"
+info "Looking for kernels matching: $KVER_PATTERN"
 echo ""
 
-# Find fairydust kernel version(s)
-FAIRYDUST_KVERS=$(ls /usr/lib/modules/ 2>/dev/null | grep fairydust || true)
+# Find custom kernel version(s)
+FAIRYDUST_KVERS=""
+for _d in /usr/lib/modules/*/; do
+    [[ -d "$_d" ]] || continue
+    _k="$(basename "$_d")"
+    [[ "$_k" =~ $KVER_PATTERN ]] && FAIRYDUST_KVERS+="$_k"$'\n'
+done
+FAIRYDUST_KVERS="${FAIRYDUST_KVERS%$'\n'}"
 if [[ -z "$FAIRYDUST_KVERS" ]]; then
-    info "No fairydust kernel found. Nothing to uninstall."
+    info "No custom kernel found. Nothing to uninstall."
     exit 0
 fi
 
-echo "Found fairydust kernel(s):"
+echo "Found custom kernel(s):"
 for kver in $FAIRYDUST_KVERS; do
     echo "  - $kver"
 done
