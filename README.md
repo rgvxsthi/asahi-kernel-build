@@ -65,7 +65,7 @@ That is the entire fix: [`patches/0001-drm-apple-reconnect-DP2HDMI-output-on-res
 
 - **Fedora Asahi Remix** on Apple Silicon
 - **15 GB+ free disk space**
-- **1.5–3 hours** for the build
+- **1.5–3 hours** for the build (the script's own banner says 60–90 minutes; that estimate is optimistic on a laptop)
 - 16 GB RAM machines: pass `JOBS=6` or the build will thrash swap
 
 ## Usage
@@ -109,7 +109,7 @@ Your stock kernel is untouched and stays in GRUB — select it at boot. To remov
 
 ## Configuration
 
-Everything is environment-overridable:
+Most behaviour is environment-overridable:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -123,10 +123,16 @@ Everything is environment-overridable:
 | `SKIP_PATCHES` | `0` | Build the branch unpatched |
 | `PATCHES` | *(asks)* | Comma-separated filename substrings, case-insensitive |
 | `UPDATE_SOURCE` | `1` | Set to `0` to never refresh an existing checkout |
+| `FAIRYDUST_REFRESH` | `1` | ALARM only. `0` uses the shipped patch snapshot instead of refetching |
+| `ALARM_PKGBUILDS_DIR` | `$HOME/PKGBUILDs` | ALARM only. Where to clone `asahi-alarm/PKGBUILDs` |
+| `RUST_LIB_SRC` | *(autodetected)* | Path to the Rust library source, if autodetection picks wrong |
+
+`LOCALVERSION` is also read by `asahi-fairydust-uninstall.sh`. If you built with a
+custom value, export the same one when uninstalling or it will not find the kernel.
 
 ## Patches
 
-Everything in `patches/*.patch` is applied in filename order after cloning and before configuring. Already-applied patches are detected and skipped, so re-runs are safe. A patch that no longer applies is a hard error rather than a silent skip.
+Everything in `patches/*.patch` is applied in filename order after cloning and before configuring. Already-applied patches are detected and skipped, so re-runs are safe. A patch that does not apply to your branch is reported and skipped, not treated as an error.
 
 | Patch | What it does |
 |---|---|
@@ -161,7 +167,7 @@ Apply: BORE scheduler - keeps the desktop responsive under heavy load [Y/n]: n
 [INFO]  Already in fairydust, nothing to do: USB-C DisplayPort output
 ```
 
-Prompt text comes from each patch's `Subject:` line, so patches are self-describing. Non-interactive equivalents:
+Prompt text comes from each patch's `X-Summary` header, falling back to its `Subject:` line. Non-interactive equivalents:
 
 ```bash
 PATCHES=0001 ./asahi-fairydust-build.sh          # only the HDMI fix
@@ -233,7 +239,7 @@ offers to `makepkg -si`. The PKGBUILD pins its own upstream tag and Arch's
 packaging handles the install, which is more reliable than reimplementing it.
 
 `ALARM_PKGBUILDS_DIR` sets the checkout location (default `~/PKGBUILDs`).
-`PATCHES`, `SKIP_PATCHES` and `ASSUME_YES` behave as they do on Fedora.
+`PATCHES` and `ASSUME_YES` behave as they do on Fedora. `SKIP_PATCHES=1` leaves nothing for the script to do and it says so and exits. Unlike the Fedora path, patches are staged without a pre-check, so one that does not apply fails inside `makepkg` rather than being skipped.
 
 **What is verified, and what is not.** The patch applies with `patch -Np1`
 against `AsahiLinux/linux` tag `asahi-7.0.13-1`, which is what ALARM's
@@ -311,9 +317,17 @@ The script warns if you select it.
 Beyond the HDMI patch, this fork carries build fixes that have been offered back to the original repo:
 
 - **`rust/core.o` build failure.** The kernel compiles the Rust core library from source, so `rustc` and `rust-src` must be the same version. A rustup toolchain in `~/.cargo/bin` shadows `/usr/bin/rustc` and is usually a different version from the `rust-src` package, producing `attributes starting with 'rustc' are reserved` and `cannot use 'const' closures outside of const contexts`. Now pinned to the distro toolchain.
-- **`ASSUME_YES` / `NO_REBOOT`** for unattended builds, with reboot kept as a separate opt-in so an unattended run can never reboot on its own.
+- **`ASSUME_YES` / `NO_REBOOT`** for unattended builds, with reboot kept as a separate opt-in. `ASSUME_YES=1` never reboots either.
 - **Environment-overridable config**, so you can build your own branch without editing the script.
 - **Non-destructive clone step** — reuses an existing checkout instead of offering to delete it, and clones blobless rather than `--depth 1` so the tree stays rebaseable.
+
+## Things it changes that you might not expect
+
+- Sets `GRUB_TIMEOUT_STYLE=menu` and `GRUB_TIMEOUT=5` in `/etc/default/grub`, so the boot menu appears. The uninstaller does not restore the previous values.
+- Points `/usr/src/linux` at the kernel source tree.
+- Enables `CONFIG_RCU_LAZY` (battery) and `CONFIG_SCHED_BORE` in the config regardless of whether you accepted the BORE patch. `SCHED_BORE` has no effect without that patch.
+- Requires working ICMP: it aborts if `ping github.com` fails, even where HTTPS would work.
+- Checks free space on `/`, but clones into `$HOME`, which may be a different filesystem.
 
 ## Caveats
 

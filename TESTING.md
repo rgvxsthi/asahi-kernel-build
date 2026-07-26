@@ -24,10 +24,10 @@ Must **not** say `llvmpipe`. If it does, the Rust GPU driver did not load — re
 
 ```bash
 # with the HDMI cable plugged in and the monitor on
-cat /sys/class/drm/card2-HDMI-A-1/status    # connected
+cat /sys/class/drm/card*-HDMI-A-1/status    # connected
 systemctl suspend
 # wake the machine, then:
-cat /sys/class/drm/card2-HDMI-A-1/status    # must still be: connected
+cat /sys/class/drm/card*-HDMI-A-1/status    # must still be: connected
 ```
 Pass = display comes back with **no replug**.
 
@@ -37,7 +37,7 @@ sudo dmesg | grep -iE "dcp|dptx|hpd" | tail -40
 ```
 Look for `dcp_enable_dp2hdmi_hpd` and `dcp_dptx_connect(port=0)` after the resume. Absent means the patch did not take effect.
 
-## 4. Swap survived the reboot
+## 4. Swap survived the reboot (specific to this machine, not the repo)
 
 ```bash
 swapon --show
@@ -47,7 +47,7 @@ Expect `/dev/loop0`, 24G. Empty means the systemd ordering cycle is back:
 systemctl status swapfile-loop.service     # look for "ordering cycle"
 ```
 
-## 5. BORE active
+## 5. BORE active (only if you accepted the BORE patch)
 
 ```bash
 cat /proc/sys/kernel/sched_bore            # 1
@@ -71,7 +71,12 @@ USB-C DisplayPort alt mode (the original point of the fairydust branch) also shi
 
 ---
 
-## Results — 2026-07-25, MacBook Pro 14" M1 Pro (`apple,j314s`), fairydust 7.0.13
+## Results — 2026-07-25, MacBook Pro 14" M1 Pro (`apple,j314s`)
+
+These results come from a build tagged `7.0.13-rgvx+`, made from the `fairydust`
+branch before the default `LOCALVERSION` became `-hdmifix` and before the branch
+menu existed. The kernel behaviour tested below is unchanged, but the run was not
+produced by the current default configuration.
 
 | Test | Result |
 |---|---|
