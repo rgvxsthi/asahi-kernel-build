@@ -5,6 +5,10 @@ name: Patches still apply
 # or the surrounding code was rewritten. Either way it is better to find out
 # from a scheduled job than from someone two hours into a kernel build.
 
+# The job only reads: it clones public sources and test-applies patches.
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: '0 6 * * 1'   # Mondays, 06:00 UTC

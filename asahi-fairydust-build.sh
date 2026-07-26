@@ -53,7 +53,6 @@ CLONE_DIR="${CLONE_DIR:-$HOME/linux-fairydust}"
 BRANCH="${BRANCH:-}"
 LOCALVERSION="${LOCALVERSION:--hdmifix}"
 JOBS="${JOBS:-$(nproc)}"
-DISPLAY_SCRIPT="$HOME/display-setup.sh"
 LOG_FILE="$HOME/fairydust-build.log"
 
 # Prefer the distro Rust toolchain over anything rustup installed.
@@ -102,7 +101,10 @@ confirm() {
         info "$1 [auto-yes]"
         return 0
     fi
-    read -rp "$(echo -e "${YELLOW}$1 [y/N]:${NC} ")" response
+    if ! read -rp "$(echo -e "${YELLOW}$1 [y/N]:${NC} ")" response; then
+        error "No input available (stdin closed). Re-run attached to a terminal,
+or set ASSUME_YES=1 to answer prompts automatically."
+    fi
     [[ "$response" =~ ^[Yy]$ ]]
 }
 
@@ -113,7 +115,10 @@ confirm_default_yes() {
         info "$1 [auto-yes]"
         return 0
     fi
-    read -rp "$(echo -e "${YELLOW}$1 [Y/n]:${NC} ")" response
+    if ! read -rp "$(echo -e "${YELLOW}$1 [Y/n]:${NC} ")" response; then
+        error "No input available (stdin closed). Re-run attached to a terminal,
+or set ASSUME_YES=1 to answer prompts automatically."
+    fi
     [[ -z "$response" || "$response" =~ ^[Yy]$ ]]
 }
 
@@ -180,9 +185,11 @@ preflight() {
     fi
     ok "Internet connection available"
 
-    # Check if already running fairydust
-    if uname -r | grep -q "fairydust"; then
-        warn "You're already running a fairydust kernel: $(uname -r)"
+    # Check whether we are already running a kernel this script built. Matching
+    # only "fairydust" went stale when the default LOCALVERSION became
+    # -hdmifix, so match the current default plus the suffixes used before.
+    if uname -r | grep -qE "$(printf '%s\n' "${LOCALVERSION#-}" fairydust rgvx hdmifix | sort -u | paste -sd'|')"; then
+        warn "You're already running a kernel from this script: $(uname -r)"
         if ! confirm "Continue anyway (rebuild)?"; then
             exit 0
         fi
@@ -241,7 +248,13 @@ install_deps() {
         if command -v rustup &>/dev/null; then
             rustup component add rust-src 2>&1 | tee -a "$LOG_FILE"
         else
-            warn "rustup not available. Installing..."
+            warn "rustup not available, and the distro rust-src package is missing."
+            warn "The alternative is to download https://sh.rustup.rs and pipe it"
+            warn "into a shell, which is a third-party installer, not a distro package."
+            if ! confirm "Download and run the rustup installer?"; then
+                error "Cannot build the Rust parts of the kernel without a matching
+rust-src. Install it from your distro (dnf install rust-src) and re-run."
+            fi
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y 2>&1 | tee -a "$LOG_FILE"
             source "$HOME/.cargo/env"
             rustup component add rust-src 2>&1 | tee -a "$LOG_FILE"
@@ -304,7 +317,10 @@ select_branch() {
     fi
 
     local choice
-    read -rp "$(echo -e "${YELLOW}Branch [1/2/3, default 1]:${NC} ")" choice
+    if ! read -rp "$(echo -e "${YELLOW}Branch [1/2/3, default 1]:${NC} ")" choice; then
+        error "No input available (stdin closed). Re-run attached to a terminal,
+or set BRANCH=fairydust (or asahi / asahi-wip) to choose without prompting."
+    fi
     case "$choice" in
         2) BRANCH="asahi" ;;
         3) BRANCH="asahi-wip" ;;
@@ -375,7 +391,18 @@ clone_source() {
         cd "$CLONE_DIR"
         # Make sure we are actually on the branch we intend to build.
         if [[ "$(git branch --show-current)" != "$BRANCH" ]]; then
-            info "Checking out $BRANCH"
+            info "Switching to $BRANCH"
+            # The clone is --single-branch, so a branch chosen on a later run
+            # has no local ref yet and a bare checkout fails with a pathspec
+            # error. Fetch it explicitly first.
+            if ! git rev-parse --verify --quiet "$BRANCH" >/dev/null; then
+                info "Fetching $BRANCH (not in this checkout yet)"
+                git fetch origin "$BRANCH:$BRANCH" 2>&1 | tee -a "$LOG_FILE" \
+                    || error "Could not fetch branch '$BRANCH' from $REPO_URL."
+            fi
+            # Patches from a previous run are uncommitted, and would collide
+            # with the new branch.
+            git checkout -- . 2>/dev/null || true
             git checkout "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
         fi
         update_source
@@ -423,6 +450,8 @@ patch_audience() {
 apply_patches() {
     local patch_dir
     patch_dir="$SCRIPT_DIR/patches"
+    APPLIED_PATCHES=()
+    SKIPPED_PATCHES=()
 
     if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
         info "SKIP_PATCHES is set, building the branch as-is"
@@ -452,6 +481,7 @@ apply_patches() {
         # building a branch that already carries the change as a commit.
         if git apply --reverse --check "$p" 2>/dev/null; then
             info "Already in $BRANCH, nothing to do: $subject"
+            APPLIED_PATCHES+=("$subject (already present)")
             continue
         fi
 
@@ -473,6 +503,7 @@ It probably targets a different kernel version. Drop it from PATCHES, or
 choose a branch it fits."
             fi
             info "Not applicable to $BRANCH, skipping: $subject"
+            SKIPPED_PATCHES+=("$subject (does not apply to $BRANCH)")
             continue
         fi
 
@@ -494,13 +525,37 @@ choose a branch it fits."
             [[ -n "$audience" ]] && echo "    $audience"
             if ! confirm_default_yes "Apply: $subject"; then
                 info "Skipped: $name"
+                SKIPPED_PATCHES+=("$subject (declined)")
                 continue
             fi
         fi
 
         git apply --whitespace=nowarn "$p" 2>&1 | tee -a "$LOG_FILE"
+        APPLIED_PATCHES+=("$subject")
         ok "Applied: $subject"
     done
+
+    echo ""
+    if [[ ${#APPLIED_PATCHES[@]} -eq 0 ]]; then
+        if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
+            info "SKIP_PATCHES is set: building $BRANCH unmodified."
+            return
+        fi
+        # Two hours of compiling to produce a kernel identical to the one the
+        # distro ships is never what someone wanted.
+        error "No patches were applied, so this build would be identical to the
+stock $BRANCH kernel. Nothing here would be fixed.
+$(printf '  - %s\n' "${SKIPPED_PATCHES[@]}")
+Choose a different branch, or re-run with SKIP_PATCHES=1 if you genuinely
+want an unmodified build."
+    fi
+
+    info "Patches applied to this build:"
+    printf '    - %s\n' "${APPLIED_PATCHES[@]}"
+    if [[ ${#SKIPPED_PATCHES[@]} -gt 0 ]]; then
+        info "Not applied:"
+        printf '    - %s\n' "${SKIPPED_PATCHES[@]}"
+    fi
 }
 
 # --- Step 3: Configure Kernel ---
@@ -701,72 +756,6 @@ setup_modules() {
     ok "Typec modules will auto-load on boot"
 }
 
-# --- Step 9: Create Display Hotplug Script ---
-setup_display_script() {
-    echo ""
-    info "=== Step 9/9: Creating display hotplug script ==="
-
-    USERNAME=$(whoami)
-    HOMEDIR=$(eval echo ~"$USERNAME")
-
-    # Create the display setup script
-    cat > "$DISPLAY_SCRIPT" << DISPEOF
-#!/bin/bash
-# Auto-configure external display for Asahi Linux on Apple Silicon
-# Generated by asahi-fairydust-build.sh
-
-sleep 2
-export DISPLAY=:0
-export XAUTHORITY=${HOMEDIR}/.Xauthority
-
-# Check if DP-1 is connected
-if xrandr 2>/dev/null | grep -q "DP-1 connected"; then
-    # Get the preferred resolution of the external display
-    EXT_RES=\$(xrandr | grep -A1 "DP-1 connected" | tail -1 | awk '{print \$1}')
-    INT_RES="2560x1600"
-
-    # Calculate framebuffer width
-    INT_W=\$(echo "\$INT_RES" | cut -d'x' -f1)
-    EXT_W=\$(echo "\$EXT_RES" | cut -d'x' -f1)
-    EXT_H=\$(echo "\$EXT_RES" | cut -d'x' -f2)
-    INT_H=\$(echo "\$INT_RES" | cut -d'x' -f2)
-    FB_W=\$((INT_W + EXT_W))
-    FB_H=\$((INT_H > EXT_H ? INT_H : EXT_H))
-
-    xrandr --fb "\${FB_W}x\${FB_H}" \\
-        --output eDP-1 --mode "\$INT_RES" --pos 0x0 \\
-        --output DP-1 --mode "\$EXT_RES" --pos "\${INT_W}x0"
-
-    logger "fairydust: External display configured at \$EXT_RES"
-else
-    # No external display — just use internal
-    xrandr --output eDP-1 --auto
-    logger "fairydust: No external display detected"
-fi
-DISPEOF
-    chmod +x "$DISPLAY_SCRIPT"
-    ok "Display script created at $DISPLAY_SCRIPT"
-
-    # XFCE autostart entry
-    mkdir -p "$HOMEDIR/.config/autostart"
-    cat > "$HOMEDIR/.config/autostart/fairydust-display.desktop" << AUTOEOF
-[Desktop Entry]
-Type=Application
-Name=Fairydust Display Setup
-Comment=Configure external display via USB-C DP Alt Mode
-Exec=${DISPLAY_SCRIPT}
-Hidden=false
-X-GNOME-Autostart-enabled=true
-AUTOEOF
-    ok "Autostart entry created (runs at login)"
-
-    # Udev rule for hotplug
-    sudo bash -c "cat > /etc/udev/rules.d/95-fairydust-hotplug.rules << UDEVEOF
-ACTION==\"change\", SUBSYSTEM==\"drm\", RUN+=\"${DISPLAY_SCRIPT}\"
-UDEVEOF"
-    sudo udevadm control --reload-rules
-    ok "Udev hotplug rule created (auto-detects display plug/unplug)"
-}
 
 # --- Summary ---
 print_summary() {
@@ -776,24 +765,28 @@ print_summary() {
     echo -e "  ${GREEN}BUILD COMPLETE!${NC}"
     echo "============================================================"
     echo ""
-    echo "  Kernel version:  $KVER"
+    echo "  Kernel version:   $KVER"
+    echo "  Branch built:     $BRANCH"
     echo "  Source tree:      $CLONE_DIR"
-    echo "  Display script:   $DISPLAY_SCRIPT"
     echo "  Build log:        $LOG_FILE"
     echo ""
+    if [[ ${#APPLIED_PATCHES[@]} -gt 0 ]]; then
+        echo "  Patches in this kernel:"
+        printf '    - %s\n' "${APPLIED_PATCHES[@]}"
+        echo ""
+    fi
     echo "  NEXT STEPS:"
     echo "  1. Reboot:  sudo reboot"
-    echo "  2. In GRUB menu, select the kernel with '${LOCALVERSION}'"
-    echo "  3. After boot, plug USB-C to HDMI adapter into the"
-    echo "     FRONT-MOST USB-C port (closer to the trackpad)"
-    echo "  4. The display should auto-configure, or run:"
-    echo "     ~/display-setup.sh"
+    echo "  2. In the GRUB menu, select the kernel with '${LOCALVERSION}'"
     echo ""
     echo "  VERIFY AFTER BOOT:"
-    echo "    uname -r                         # should show ${LOCALVERSION}"
-    echo "    lsmod | grep asahi               # GPU driver loaded"
-    echo "    glxinfo | grep 'OpenGL renderer'  # should show Apple M2"
-    echo "    xrandr                            # should show DP-1"
+    echo "    uname -r                                   # should contain ${LOCALVERSION}"
+    echo "    glxinfo | grep 'OpenGL renderer'           # your GPU, NOT llvmpipe"
+    echo "    cat /sys/class/drm/card*-HDMI-A-1/status   # before and after a suspend"
+    echo ""
+    echo "  The HDMI fix is the one to test: suspend with a monitor plugged"
+    echo "  into the built-in HDMI port, wake, and it should return without"
+    echo "  unplugging the cable."
     echo ""
     echo "  TO REVERT:"
     echo "    Reboot and select your original kernel in GRUB."
@@ -802,8 +795,11 @@ print_summary() {
     echo "============================================================"
     echo ""
 
-    if [[ "${NO_REBOOT:-0}" == "1" ]]; then
-        info "NO_REBOOT is set. Reboot when ready with: sudo reboot"
+    # ASSUME_YES deliberately does NOT reboot. It exists so a long build can run
+    # unattended, and answering "yes" to every prompt should not be the same as
+    # asking for the machine to restart while nobody is watching.
+    if [[ "${NO_REBOOT:-0}" == "1" || "${ASSUME_YES:-0}" == "1" ]]; then
+        info "Not rebooting automatically. Reboot when ready with: sudo reboot"
     elif confirm "Reboot now?"; then
         sudo reboot
     else
@@ -834,9 +830,12 @@ refresh_fairydust_patch() {
 
     # --printsrcinfo expands the PKGBUILD's own variables, so this tracks the
     # tag correctly even when the version scheme changes.
+    # || true is required: under set -eo pipefail a non-matching grep makes the
+    # whole assignment non-zero and aborts the script, which would make the
+    # fallback immediately below this unreachable.
     tag="$(makepkg --printsrcinfo 2>/dev/null \
         | grep -oE 'archive/[^[:space:]]+\.tar\.gz' \
-        | head -1 | sed 's|archive/||; s|\.tar\.gz$||')"
+        | head -1 | sed 's|archive/||; s|\.tar\.gz$||' || true)"
 
     if [[ -z "$tag" ]]; then
         warn "Could not determine the kernel tag from the PKGBUILD."
@@ -855,16 +854,45 @@ refresh_fairydust_patch() {
         return
     fi
 
-    # Keep the descriptive header from the shipped patch so the prompt still
-    # reads sensibly, then append the freshly computed range. Named after the
-    # shipped file rather than hardcoded, so renaming the patch cannot make
-    # this copy a file onto itself.
+    # Non-empty is not the same as usable: an error page or an empty range would
+    # both pass the test above.
+    if ! grep -q '^diff --git' "$tmp"; then
+        warn "Response from GitHub contained no diff hunks."
+        warn "Using the shipped snapshot instead."
+        rm -f "$tmp"
+        return
+    fi
+
+    # Written to a temp file, not into the package directory, because this runs
+    # before the user has agreed to apply it.
     local out
-    out="$PWD/$(basename "$shipped")"
+    out="$(mktemp)"
     { sed -n '1,/^---$/p' "$shipped"; cat "$tmp"; } > "$out"
     rm -f "$tmp"
 
-    ok "Regenerated the fairydust delta against $tag ($(grep -c '^diff --git' "$out") files)"
+    # The user is about to consent to applying this. If it is not the file
+    # shipped in patches/ then say so plainly, because someone who reviewed the
+    # repo before running is otherwise consenting to bytes they never saw.
+    if cmp -s "$shipped" "$out"; then
+        ok "Upstream matches the snapshot in patches/ exactly ($tag)"
+        rm -f "$out"
+        return
+    fi
+
+    warn "Upstream fairydust has moved since the snapshot in patches/ was taken."
+    echo ""
+    echo "    shipped snapshot: $(grep -c '^diff --git' "$shipped") files, $(grep -c '^+[^+]' "$shipped") added lines"
+    echo "    freshly fetched:  $(grep -c '^diff --git' "$out") files, $(grep -c '^+[^+]' "$out") added lines"
+    echo "    source: $url"
+    echo ""
+    warn "The freshly fetched diff has not been reviewed by anyone here."
+    if ! confirm "Use the freshly fetched version instead of the reviewed snapshot?"; then
+        info "Using the reviewed snapshot from patches/ instead."
+        rm -f "$out"
+        return
+    fi
+
+    ok "Using the freshly fetched delta for $tag"
     FAIRYDUST_PATCH="$out"
 }
 
@@ -878,7 +906,7 @@ refresh_fairydust_patch() {
 # entirely. The PKGBUILD pins its own upstream tag and Arch's packaging handles
 # the install, which is more reliable than anything reimplemented here.
 alarm_build() {
-    local patch_dir pkgdir chosen p name subject audience want wanted
+    local patch_dir pkgdir chosen p name subject audience want wanted staged_src
 
     patch_dir="$SCRIPT_DIR/patches"
     pkgdir="${ALARM_PKGBUILDS_DIR:-$HOME/PKGBUILDs}"
@@ -901,6 +929,12 @@ alarm_build() {
 
     info "=== Step 2/5: linux-asahi PKGBUILD ==="
     if [[ -d "$pkgdir/.git" ]]; then
+        # Discard our own edits from a previous run BEFORE pulling. A previous
+        # run leaves PKGBUILD modified, and a kernel bump upstream touches the
+        # same file, so pull --ff-only would refuse and abort the script.
+        info "Discarding local changes from any previous run in $pkgdir"
+        git -C "$pkgdir" checkout -- . 2>/dev/null || true
+        git -C "$pkgdir" clean -fd 2>/dev/null || true
         info "Updating $pkgdir"
         git -C "$pkgdir" pull --ff-only 2>&1 | tee -a "$LOG_FILE"
     else
@@ -908,9 +942,6 @@ alarm_build() {
     fi
 
     cd "$pkgdir/linux-asahi" || error "linux-asahi not found in $pkgdir"
-
-    # Start from a clean PKGBUILD so re-runs do not stack duplicate entries.
-    git checkout -- PKGBUILD 2>/dev/null || true
 
     info "=== Step 3/5: choosing patches ==="
     chosen=()
@@ -925,17 +956,30 @@ alarm_build() {
             continue
         fi
 
+        # Resolve what would actually be applied BEFORE asking, so the user is
+        # consenting to real content rather than to a filename.
+        staged_src="$p"
+        if [[ "$name" == *fairydust* ]]; then
+            refresh_fairydust_patch "$p"
+            staged_src="$FAIRYDUST_PATCH"
+        fi
+
         if [[ -n "${PATCHES:-}" ]]; then
             wanted=0
             for want in ${PATCHES//,/ }; do
                 [[ "${name,,}" == *"${want,,}"* ]] && wanted=1
             done
-            [[ "$wanted" -eq 0 ]] && { info "Not selected by PATCHES: $subject"; continue; }
+            if [[ "$wanted" -eq 0 ]]; then
+                info "Not selected by PATCHES: $subject"
+                [[ "$staged_src" != "$p" ]] && rm -f "$staged_src"
+                continue
+            fi
         else
             echo ""
             [[ -n "$audience" ]] && echo "    $audience"
             if ! confirm_default_yes "Apply: $subject"; then
                 info "Skipped: $name"
+                [[ "$staged_src" != "$p" ]] && rm -f "$staged_src"
                 continue
             fi
         fi
@@ -949,18 +993,20 @@ alarm_build() {
             warn "also add CONFIG_SCHED_BORE=y to the 'config' file here."
         fi
 
-        if [[ "$name" == *fairydust* ]]; then
-            refresh_fairydust_patch "$p"
-            [[ "$FAIRYDUST_PATCH" != "$PWD/$name" ]] && cp "$FAIRYDUST_PATCH" ./
-        else
-            cp "$p" ./
-        fi
+        cp "$staged_src" "./$name"
+        [[ "$staged_src" != "$p" ]] && rm -f "$staged_src"
         chosen+=("$name")
         ok "Staged: $subject"
     done
 
     if [[ ${#chosen[@]} -eq 0 ]]; then
-        error "No patches selected. Nothing to do."
+        if [[ "${SKIP_PATCHES:-0}" == "1" ]]; then
+            info "SKIP_PATCHES is set, so there is nothing for this script to do."
+            info "Build the stock package yourself with: cd $pkgdir/linux-asahi && makepkg -si"
+            return
+        fi
+        error "No patches selected, so this would just build the stock kernel.
+Nothing to do."
     fi
 
     info "=== Step 4/5: registering patches in PKGBUILD ==="
@@ -1023,7 +1069,6 @@ main() {
     update_m1n1
     update_grub
     setup_modules
-    # setup_display_script  # disabled: causes login loop on KDE/Wayland sessions. X11 users can call manually.
     print_summary
 }
 

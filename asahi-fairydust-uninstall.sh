@@ -43,7 +43,13 @@ echo ""
 # this script reported that there was nothing to uninstall while a custom
 # kernel was plainly installed, and the safety check below never fired.
 KERNEL_SUFFIXES="${LOCALVERSION:--hdmifix} -fairydust -rgvx"
-KVER_PATTERN="$(echo "$KERNEL_SUFFIXES" | tr ' ' '\n' | grep -v '^$' | sed 's/^-//' | paste -sd'|')"
+# Sanitised: this pattern drives which module directories get removed, and the
+# comment above invites users to export their own LOCALVERSION, so it must not
+# be able to carry regex metacharacters.
+KVER_PATTERN="$(printf '%s\n' $KERNEL_SUFFIXES \
+    | sed 's/^-//; s/[^A-Za-z0-9_+]//g' \
+    | grep -v '^$' | sort -u | paste -sd'|')"
+[[ -z "$KVER_PATTERN" ]] && error "No usable kernel suffix to match on."
 
 # Safety check — don't uninstall the kernel we are currently running
 if uname -r | grep -qE "$KVER_PATTERN"; then
@@ -130,7 +136,9 @@ fi
 
 # Restore /etc/sysconfig/update-m1n1 DTBS path
 if [[ -f /etc/sysconfig/update-m1n1 ]]; then
-    sudo sed -i 's|.*DTBS=.*|DTBS="/boot/dtb"|' /etc/sysconfig/update-m1n1
+    # Anchored, and only non-commented lines: the previous pattern matched any
+    # line containing DTBS=, including commented-out ones, and activated them.
+    sudo sed -i 's|^[[:space:]]*DTBS=.*|DTBS="/boot/dtb"|' /etc/sysconfig/update-m1n1
 fi
 
 sudo ln -sfn "/usr/lib/modules/$STOCK_KVER" /usr/src/linux
@@ -144,7 +152,9 @@ ok "GRUB regenerated"
 
 # Optionally remove source tree
 echo ""
-CLONE_DIR="$HOME/linux-fairydust"
+# Honour the same override the build script uses, so a non-default tree is
+# still offered for removal.
+CLONE_DIR="${CLONE_DIR:-$HOME/linux-fairydust}"
 if [[ -d "$CLONE_DIR" ]]; then
     SOURCE_SIZE=$(du -sh "$CLONE_DIR" | awk '{print $1}')
     if confirm "Remove kernel source tree at $CLONE_DIR ($SOURCE_SIZE)?"; then
@@ -157,7 +167,7 @@ fi
 
 # Also check for ~/linux
 if [[ -d "$HOME/linux" ]] && [[ -f "$HOME/linux/.config" ]]; then
-    if grep -q "fairydust" "$HOME/linux/.config" 2>/dev/null; then
+    if grep -qE "$KVER_PATTERN" "$HOME/linux/.config" 2>/dev/null; then
         SOURCE_SIZE=$(du -sh "$HOME/linux" | awk '{print $1}')
         if confirm "Found fairydust source at ~/linux ($SOURCE_SIZE). Remove?"; then
             rm -rf "$HOME/linux"
