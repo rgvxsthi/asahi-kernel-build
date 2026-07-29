@@ -24,7 +24,18 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
 confirm() {
-    read -rp "$(echo -e "${YELLOW}$1 [y/N]:${NC} ")" response
+    # Same contract as the build script's confirm(): ASSUME_YES makes an
+    # unattended run possible, and a closed stdin is an error rather than a
+    # silent "no", which would otherwise look like the uninstall ran and
+    # decided against everything.
+    if [[ "${ASSUME_YES:-0}" == "1" ]]; then
+        info "$1 [auto-yes]"
+        return 0
+    fi
+    if ! read -rp "$(echo -e "${YELLOW}$1 [y/N]:${NC} ")" response; then
+        error "No input available (stdin closed). Re-run attached to a terminal,
+or set ASSUME_YES=1 to answer prompts automatically."
+    fi
     [[ "$response" =~ ^[Yy]$ ]]
 }
 
@@ -108,6 +119,12 @@ if [[ -f /etc/modules-load.d/fairydust-typec.conf ]]; then
     sudo rm -f /etc/modules-load.d/fairydust-typec.conf
     ok "Removed typec module autoload config"
 fi
+
+# The three blocks below clean up files this script's own builder never
+# creates. They come from the upstream fork's older script, which did install a
+# display hotplug rule and an autostart entry. Anyone who ran that first and
+# this uninstaller second would otherwise be left with them, so the blocks stay.
+# They are no-ops on a machine that only ever ran the current builder.
 
 # Remove udev hotplug rule
 if [[ -f /etc/udev/rules.d/95-fairydust-hotplug.rules ]]; then

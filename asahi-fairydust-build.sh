@@ -17,7 +17,6 @@
 #   4. Builds and installs the kernel
 #   5. Updates m1n1 bootloader and GRUB
 #   6. Sets up typec module autoloading
-#   7. Creates a display hotplug script
 #
 # REQUIREMENTS:
 #   - Fedora Asahi Remix on Apple Silicon Mac
@@ -31,7 +30,8 @@
 #
 # NOTES:
 #   - The build takes 60-90+ minutes depending on your Mac
-#   - After reboot, select the kernel with "-fairydust" in GRUB
+#   - After reboot, select the kernel with "-hdmifix" in GRUB
+#     (or whatever LOCALVERSION you set)
 #   - Use the FRONT-MOST USB-C port for external display
 #   - This script is provided as-is with no warranty
 # =============================================================================
@@ -228,7 +228,7 @@ preflight() {
 # --- Step 1: Install Build Dependencies ---
 install_deps() {
     echo ""
-    info "=== Step 1/9: Installing build dependencies ==="
+    info "=== Step 1/8: Installing build dependencies ==="
 
     sudo dnf install -y \
         gcc gcc-c++ make bc bison flex elfutils-libelf-devel \
@@ -384,7 +384,7 @@ update_source() {
 # --- Step 2: Clone Fairydust Branch ---
 clone_source() {
     echo ""
-    info "=== Step 2/9: Cloning fairydust kernel source ==="
+    info "=== Step 2/8: Cloning fairydust kernel source ==="
 
     if [[ -d "$CLONE_DIR/.git" ]]; then
         info "Using existing source tree at $CLONE_DIR"
@@ -561,7 +561,7 @@ want an unmodified build."
 # --- Step 3: Configure Kernel ---
 configure_kernel() {
     echo ""
-    info "=== Step 3/9: Configuring kernel ==="
+    info "=== Step 3/8: Configuring kernel ==="
 
     cd "$CLONE_DIR"
 
@@ -676,7 +676,7 @@ See Documentation/rust/quick-start.rst in the kernel source."
 # --- Step 4: Build Kernel ---
 build_kernel() {
     echo ""
-    info "=== Step 4/9: Building kernel (this will take a while) ==="
+    info "=== Step 4/8: Building kernel (this will take a while) ==="
     info "Using $JOBS parallel jobs"
     info "Started at: $(date)"
 
@@ -690,7 +690,7 @@ build_kernel() {
 # --- Step 5: Install Kernel ---
 install_kernel() {
     echo ""
-    info "=== Step 5/9: Installing kernel ==="
+    info "=== Step 5/8: Installing kernel ==="
 
     cd "$CLONE_DIR"
 
@@ -720,7 +720,7 @@ install_kernel() {
 # --- Step 6: Update m1n1 Bootloader ---
 update_m1n1() {
     echo ""
-    info "=== Step 6/9: Updating m1n1 bootloader ==="
+    info "=== Step 6/8: Updating m1n1 bootloader ==="
 
     cd "$CLONE_DIR"
 
@@ -736,7 +736,7 @@ update_m1n1() {
 # --- Step 7: Update GRUB ---
 update_grub() {
     echo ""
-    info "=== Step 7/9: Updating GRUB ==="
+    info "=== Step 7/8: Updating GRUB ==="
 
     sudo sed -i 's/GRUB_TIMEOUT_STYLE=.*/GRUB_TIMEOUT_STYLE=menu/' /etc/default/grub
     sudo sed -i 's/GRUB_TIMEOUT=.*/GRUB_TIMEOUT=5/' /etc/default/grub
@@ -748,7 +748,7 @@ update_grub() {
 # --- Step 8: Setup Typec Module Autoloading ---
 setup_modules() {
     echo ""
-    info "=== Step 8/9: Setting up typec module autoloading ==="
+    info "=== Step 8/8: Setting up typec module autoloading ==="
 
     echo -e "typec_displayport\ntypec_nvidia\ntypec_thunderbolt" | \
         sudo tee /etc/modules-load.d/fairydust-typec.conf > /dev/null

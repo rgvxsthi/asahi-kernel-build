@@ -78,6 +78,11 @@ branch before the default `LOCALVERSION` became `-hdmifix` and before the branch
 menu existed. The kernel behaviour tested below is unchanged, but the run was not
 produced by the current default configuration.
 
+It also predates two later changes. Upstream has since rebased every branch from
+7.0.13 onto 7.1.5, and `patches/0002` now ships BORE 6.8.0 instead of the 6.6.3
+that produced the `sched_bore=1` result below. The BORE patch shipped today has
+been apply-tested only — it has not been compiled or booted.
+
 | Test | Result |
 |---|---|
 | Correct kernel booted | Pass |

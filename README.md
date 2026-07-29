@@ -78,6 +78,8 @@ cd asahi-linux-hdmi-sleep-fixer
 
 Reboot and pick the `-hdmifix` entry in GRUB.
 
+Full output is also written to `~/fairydust-build.log`, which is the thing to attach if you file an issue about a failed build.
+
 Unattended, on a 16 GB machine:
 
 ```bash
@@ -87,7 +89,7 @@ ASSUME_YES=1 NO_REBOOT=1 JOBS=6 ./asahi-fairydust-build.sh
 ### Verify it worked
 
 ```bash
-uname -r                                      # e.g. 7.0.13-hdmifix+
+uname -r                                      # e.g. 7.1.5-hdmifix+
 glxinfo | grep "OpenGL renderer"              # Apple M1 Pro (...), NOT llvmpipe
 cat /sys/class/drm/card*-HDMI-A-1/status      # connected
 systemctl suspend                             # wake it, then check again
@@ -106,6 +108,8 @@ Full checklist in [TESTING.md](TESTING.md).
 ### Reverting
 
 Your stock kernel is untouched and stays in GRUB — select it at boot. To remove the custom kernel entirely, boot into stock and run `./asahi-fairydust-uninstall.sh`.
+
+It reads `LOCALVERSION`, `CLONE_DIR` and `ASSUME_YES` the same way the build script does, so export the same values you built with or it will not find what it is meant to remove.
 
 ## Configuration
 
@@ -137,7 +141,7 @@ Everything in `patches/*.patch` is applied in filename order after cloning and b
 | Patch | What it does |
 |---|---|
 | `0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch` | The HDMI-after-suspend fix described above |
-| `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler, version 6.8.0, taken from upstream's `patches/testing`. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
+| `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler, version 6.8.0, taken from upstream's `patches/testing` rather than `patches/stable`, because the stable revision no longer applies to 7.1.5. Apply-tested only, not compiled or booted. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
 | `0003-fairydust-usb-c-displayport-alt-mode.patch` | USB-C DisplayPort alt mode, for distros that build the release branch rather than `fairydust`. See below. |
 
 Patches are self-describing. Each carries `X-Summary` and `X-Who-Needs-It`
@@ -154,17 +158,16 @@ normal outcome, not a problem. The exception is a patch you named explicitly via
 Each remaining patch is offered as its own prompt, defaulting to yes, so you can take the HDMI fix and decline BORE:
 
 ```
-[INFO]  Patches available in ./patches
+[INFO]  Patches available in /home/you/asahi-linux-hdmi-sleep-fixer/patches
 
-    Everyone with a physical HDMI port (MacBook Pro 14/16, Mac mini).
-    This is the point of this repo.
+    Everyone with a physical HDMI port (MacBook Pro 14/16, Mac mini). This is the point of this repo.
 Apply: Fixes the built-in HDMI port staying dark after suspend [Y/n]:
 
-    Optional and opinionated. Needs a 7.1 kernel and CONFIG_SCHED_BORE.
+    Optional and opinionated. Needs a 7.1 kernel and CONFIG_SCHED_BORE. Runtime-tunable via /proc/sys/kernel/sched_bore.
 Apply: BORE scheduler - keeps the desktop responsive under heavy load [Y/n]: n
 [INFO]  Skipped: 0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch
 
-[INFO]  Already in fairydust, nothing to do: USB-C DisplayPort output
+[INFO]  Already in fairydust, nothing to do: USB-C DisplayPort output (the fairydust work)
 ```
 
 Prompt text comes from each patch's `X-Summary` header, falling back to its `Subject:` line. Non-interactive equivalents:
@@ -178,7 +181,7 @@ SKIP_PATCHES=1 ./asahi-fairydust-build.sh        # none
 
 Drop your own `.patch` files in there and they will be picked up.
 
-A [scheduled CI job](.github/workflows/patches-still-apply.yml) test-applies these against upstream `fairydust` every week, so a patch going stale surfaces there rather than two hours into someone's build.
+A [scheduled CI job](.github/workflows/patches-still-apply.yml) test-applies these against upstream `asahi` and `fairydust` every week, so a patch going stale surfaces there rather than two hours into someone's build. `asahi-wip` is not in the matrix, so a patch going stale on that branch alone would not be caught.
 
 ## Which branch, and staying up to date
 
@@ -244,7 +247,7 @@ packaging handles the install, which is more reliable than reimplementing it.
 `PATCHES` and `ASSUME_YES` behave as they do on Fedora. `SKIP_PATCHES=1` leaves nothing for the script to do and it says so and exits. Unlike the Fedora path, patches are staged without a pre-check, so one that does not apply fails inside `makepkg` rather than being skipped.
 
 **What is verified, and what is not.** The patch applies with `patch -Np1`
-against `AsahiLinux/linux` tag `asahi-7.0.13-1`, which is what ALARM's
+against `AsahiLinux/linux` tag `asahi-7.1.5-2`, which is what ALARM's
 `linux-asahi` currently builds, and the unfixed `dcp_platform_resume()` is
 present at that tag. The `source=()` rewrite was tested against the real
 PKGBUILD and leaves it parsing correctly. **`makepkg`, mkinitcpio and ALARM's
@@ -258,14 +261,20 @@ ALARM's `linux-asahi` builds the release branch, not `fairydust`, so the HDMI
 fix alone does not give you USB-C DisplayPort output. `patches/0003` closes
 that gap without changing which branch the package builds.
 
-`fairydust` is exactly **13 commits ahead of `asahi-7.0.13-1` and 0 behind**,
+`fairydust` is exactly **14 commits ahead of `asahi-7.1.5-2` and 0 behind**,
 so that delta is self-contained: DTS alt-mode hacks for every supported
-machine, plus two tipd changes. Patch 0003 is that range, applied the same way
-as everything else. Accept it at the prompt.
+machine, two tipd changes, and one arm64 config fixup that rides along because
+this is a plain range diff rather than a curated selection. Patch 0003 is that
+range, applied the same way as everything else. Accept it at the prompt.
 
 It is also useful on Fedora if you pick the `asahi` branch instead of
 `fairydust`. On a `fairydust` tree it is detected as already applied and
 skipped, so it is safe to leave enabled either way.
+
+On `asahi-wip` it is reported as not applicable and skipped. That branch
+already carries one commit from the range — the arm64 config fixup — so the
+diff is neither wholly absent nor wholly present. Pick `fairydust` if you want
+USB-C DisplayPort output.
 
 Caveats, inherited from upstream rather than introduced here:
 
@@ -292,10 +301,10 @@ forces the shipped snapshot.
 The Fedora path never needed this: choosing the `fairydust` branch clones it
 directly, so it is current by construction and patch 0003 self-skips.
 
-Verified: applies with `patch -Np1` to `asahi-7.0.13-1`, coexists with patch
-0001, reverse-detects on a `fairydust` tree, and the regenerated patch is
-byte-identical to the shipped one right now and applies cleanly. Not
-boot-tested — see above.
+Verified: applies to `asahi-7.1.5-2`, coexists with patches 0001 and 0002,
+and reverse-detects as already present on a `fairydust` tree. The snapshot in
+`patches/` was regenerated against that tag, so it currently matches what the
+refresh would fetch. Not boot-tested — see above.
 
 BORE needs more than a patch on ALARM: its kernel `config` has no
 `CONFIG_SCHED_BORE`, so the patch would apply but the feature would compile out.
@@ -355,6 +364,8 @@ Prior reports of the HDMI issue:
 ## Tested on
 
 MacBook Pro 14-inch M1 Pro (`apple,j314s`), Fedora Asahi Remix 44, kernel 7.0.13.
+
+That was before upstream rebased the branches onto 7.1.5, so a build today produces a 7.1.5 kernel instead. `dcp.c` did not change in the rebase, so the fix itself is unaffected, but nothing has been re-tested on 7.1.5.
 
 Reports from other models welcome — particularly M1 Max, M2 Pro/Max and Mac mini, which have the same built-in HDMI path and should behave identically.
 

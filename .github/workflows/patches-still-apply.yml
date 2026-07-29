@@ -27,6 +27,12 @@ jobs:
         # asahi is the release branch, and what distro kernels build.
         # fairydust is asahi plus the USB-C DisplayPort work, so patch 0003
         # is expected to be already present there rather than applicable.
+        # asahi-wip is deliberately absent. It carries part of the fairydust
+        # range already (the arm64 config fixup that patch 0003 picks up as a
+        # side effect of being a plain range diff), so 0003 there neither
+        # applies nor reverse-applies. This job only knows those two states, so
+        # including asahi-wip would report a permanent false failure. The build
+        # script handles it correctly and skips 0003 on that branch.
         branch: [asahi, fairydust]
     name: ${{ matrix.branch }}
     steps:
