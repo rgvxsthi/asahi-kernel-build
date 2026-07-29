@@ -589,11 +589,33 @@ configure_kernel() {
     if [[ ! -f "$CURRENT_CONFIG" ]]; then
         info "No config for the running kernel at $CURRENT_CONFIG"
         info "That is expected on a kernel this script built."
-        # -v sorts by version, so the tail is the newest. Configs belonging to
-        # our own builds are excluded: if one ever exists it is a derived
-        # config, not the distro baseline we want to start from.
-        CURRENT_CONFIG="$(ls -1v /boot/config-* 2>/dev/null \
-            | grep -Ev "$suffixes" | tail -1)"
+
+        # Prefer a distro config for the same kernel version as the source
+        # tree. Which baseline gets picked decides which symbols exist at all:
+        # a symbol absent from the baseline is never offered by olddefconfig,
+        # it just silently stays off. CONFIG_MACSMC_POWER was lost exactly this
+        # way, building 7.1.5 from a 7.0.13 baseline that predates the symbol.
+        local srcver
+        srcver="$(make -s kernelversion 2>/dev/null)"
+        if [[ -n "$srcver" ]]; then
+            CURRENT_CONFIG="$(ls -1v /boot/config-"$srcver"-* 2>/dev/null \
+                | grep -Ev "$suffixes" | tail -1)"
+            [[ -n "$CURRENT_CONFIG" ]] \
+                && info "Matched a distro config for $srcver"
+        fi
+
+        # Nothing for this version. Fall back to the newest distro config there
+        # is, and say so, because it may well be missing symbols this kernel
+        # has. -v sorts by version, so the tail is the newest. Our own builds
+        # are excluded: those are derived configs, not a distro baseline.
+        if [[ -z "$CURRENT_CONFIG" ]]; then
+            CURRENT_CONFIG="$(ls -1v /boot/config-* 2>/dev/null \
+                | grep -Ev "$suffixes" | tail -1)"
+            [[ -n "$CURRENT_CONFIG" ]] && warn \
+                "No distro config for $srcver. Using $(basename "$CURRENT_CONFIG"),
+which may predate options this kernel has. Symbols it does not know about
+default to off."
+        fi
     fi
 
     if [[ -z "$CURRENT_CONFIG" || ! -f "$CURRENT_CONFIG" ]]; then
@@ -655,6 +677,15 @@ See Documentation/rust/quick-start.rst in the kernel source."
     # Ensure Apple DRM is enabled
     scripts/config --module DRM_APPLE
 
+    # Battery and AC power supply. Fedora Asahi 7.1.5+ ships this as =m, but
+    # older /boot/config-* baselines do not have the symbol at all, so
+    # olddefconfig silently leaves it off and the machine boots with no
+    # battery: no /sys/class/power_supply/macsmc-battery, no upower device,
+    # and Plasma reporting no battery present. Set it explicitly.
+    # The symbol is MACSMC_POWER (drivers/power/supply/macsmc_power.c), not
+    # BATTERY_MACSMC. Depends on MFD_MACSMC, already =m.
+    scripts/config --module MACSMC_POWER
+
     # --- Local tuning ---------------------------------------------------
     # Most of what CachyOS enables (HZ_1000, NO_HZ_FULL, PREEMPT_DYNAMIC,
     # LRU_GEN, THP, SCHED_CLASS_EXT) is already on in the Fedora Asahi config,
@@ -693,8 +724,12 @@ See Documentation/rust/quick-start.rst in the kernel source."
     # Verify critical options
     echo ""
     info "Verifying critical config options:"
+    # A symbol the baseline config never had is not offered by olddefconfig,
+    # it is simply left off, so setting it above is not proof it survived.
+    # Everything here has been silently lost at least once.
     for opt in CONFIG_RUST CONFIG_DRM_ASAHI CONFIG_DRM_APPLE \
-               CONFIG_TYPEC_DP_ALTMODE CONFIG_RUST_APPLE_RTKIT; do
+               CONFIG_TYPEC_DP_ALTMODE CONFIG_RUST_APPLE_RTKIT \
+               CONFIG_MACSMC_POWER CONFIG_SCHED_BORE; do
         val=$(grep "^${opt}=" .config 2>/dev/null || echo "NOT SET")
         if [[ "$val" == "NOT SET" ]]; then
             error "$opt is not set in .config. Build will be incomplete."
@@ -732,6 +767,17 @@ install_kernel() {
     # Install modules, DTBs, VDSO
     info "Installing modules..."
     log_and_run sudo make INSTALL_MOD_STRIP=1 modules_install
+
+    # The config said =m, but only the installed tree proves the module was
+    # actually built and landed. Without this one the machine boots with no
+    # battery at all, which is easy to miss until you unplug the charger.
+    if ! compgen -G "/usr/lib/modules/$KVER/kernel/drivers/power/supply/macsmc-power.ko*" >/dev/null; then
+        error "macsmc-power.ko is missing from /usr/lib/modules/$KVER.
+That module provides macsmc-battery and macsmc-ac. Without it the system
+reports no battery. CONFIG_MACSMC_POWER passed the config check, so this is
+a build or install failure rather than a config one."
+    fi
+    ok "macsmc-power.ko installed (battery and AC)"
 
     info "Installing DTBs..."
     log_and_run sudo make dtbs_install
