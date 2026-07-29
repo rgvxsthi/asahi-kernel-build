@@ -80,8 +80,8 @@ produced by the current default configuration.
 
 It also predates two later changes. Upstream has since rebased every branch from
 7.0.13 onto 7.1.5, and `patches/0002` now ships BORE 6.8.0 instead of the 6.6.3
-that produced the `sched_bore=1` result below. The BORE patch shipped today has
-been apply-tested only — it has not been compiled or booted.
+that produced the `sched_bore=1` result below. Both are covered by the 7.1.5 run
+recorded further down.
 
 | Test | Result |
 |---|---|
@@ -116,7 +116,46 @@ DP2HDMI HPD irq, connected:1
 dcp_dptx_connect(port=0)
 ```
 
-### Not yet tested
+---
+
+## Results — 2026-07-29, same machine, Linux 7.1.5
+
+Upstream rebased `asahi`, `asahi-wip` and `fairydust` from 7.0.13 onto 7.1.5.
+`dcp.c` did not change in that rebase, so patch 0001 applied unmodified, but
+`patches/0002` had to move to BORE 6.8.0 to keep applying. This run covers both.
+
+Built from `fairydust` at `e3e35907`, tagged `7.1.5-hdmifix+`, installed
+alongside the earlier `7.0.13-rgvx+` without disturbing it.
+
+| Test | Result |
+|---|---|
+| Correct kernel booted | Pass — `7.1.5-hdmifix+` |
+| GPU acceleration | Pass — `Apple M1 Pro (G13S C0)`, not llvmpipe |
+| HDMI connected at boot | Pass — `card2-HDMI-A-1: connected`, `eDP-1: connected` |
+| HDMI connected across suspend | Pass — one `systemctl suspend` cycle, returns automatically, no replug |
+| BORE 6.8.0 | Pass — `sched_bore=1` |
+
+Resume trace, which is the fix doing its job:
+
+```
+apple-dcp 289c00000.dcp: dcp_enable_dp2hdmi_hpd: DP2HDMI HPD connected:1
+apple-dcp 289c00000.dcp: dcp_dptx_connect(port=0)
+```
+
+Both patches also survived a rebuild started from a previously built kernel,
+which is what surfaced the `/boot/config-*` bug fixed in `a100c39`.
+
+### Not carried over from the 7.0.13 run
+
+Only the display-present-on-resume path was re-exercised on 7.1.5. These passed
+on 7.0.13 and have not been repeated:
+
+- Resume with HDMI unplugged, plug in after
+- Unplug HDMI while suspended
+- Repeated suspend cycles
+- Swap after reboot
+
+### Not yet tested on either kernel
 
 - Lid close/open as the suspend trigger, as opposed to `systemctl suspend`
 - Long (overnight) suspend

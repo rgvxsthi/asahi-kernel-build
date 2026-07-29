@@ -24,6 +24,9 @@ release ahead.
 
 Applies cleanly to asahi, asahi-wip and fairydust at Linux 7.1.5
 (asahi e8efe09); the scheduler sources are identical on all three.
+
+Built and booted on a MacBook Pro 14-inch M1 Pro from the fairydust
+branch on 2026-07-29: sched_bore reads 1 on the running kernel.
 ---
  include/linux/sched.h        |  28 +++
  include/linux/sched/bore.h   |  49 ++++

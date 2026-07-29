@@ -144,7 +144,7 @@ Everything in `patches/*.patch` is applied in filename order after cloning and b
 | Patch | What it does |
 |---|---|
 | `0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch` | The HDMI-after-suspend fix described above |
-| `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler, version 6.8.0, taken from upstream's `patches/testing` rather than `patches/stable`, because the stable revision no longer applies to 7.1.5. Apply-tested only, not compiled or booted. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
+| `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler, version 6.8.0, taken from upstream's `patches/testing` rather than `patches/stable`, because the stable revision no longer applies to 7.1.5. Built and booted on 7.1.5, but it is upstream's staging area — treat it as less settled than the rest. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
 | `0003-fairydust-usb-c-displayport-alt-mode.patch` | USB-C DisplayPort alt mode, for distros that build the release branch rather than `fairydust`. See below. |
 
 Patches are self-describing. Each carries `X-Summary` and `X-Who-Needs-It`
@@ -368,7 +368,7 @@ Prior reports of the HDMI issue:
 
 MacBook Pro 14-inch M1 Pro (`apple,j314s`), Fedora Asahi Remix 44, kernel 7.0.13.
 
-That was before upstream rebased the branches onto 7.1.5, so a build today produces a 7.1.5 kernel instead. `dcp.c` did not change in the rebase, so the fix itself is unaffected, but nothing has been re-tested on 7.1.5.
+Re-tested 2026-07-29 on the same machine with `7.1.5-hdmifix+`, after upstream rebased the branches onto 7.1.5. `dcp.c` did not change in that rebase, and the fix still works: HDMI returns on resume with no replug. Full record in [TESTING.md](TESTING.md).
 
 Reports from other models welcome — particularly M1 Max, M2 Pro/Max and Mac mini, which have the same built-in HDMI path and should behave identically.
 
