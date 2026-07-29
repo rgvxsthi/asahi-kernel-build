@@ -411,8 +411,17 @@ clone_source() {
         return
     fi
 
+    # --filter=blob:none skips historical file contents but still fetches every
+    # commit and tree Linux has ever had, so this is a ~2 GB download that runs
+    # for several minutes with nothing else on screen. Say so before starting.
+    #
+    # --progress is required, not cosmetic: the pipe into tee means git's
+    # stderr is not a terminal, so git silently drops its progress meter and
+    # the clone looks hung for the whole run.
+    info "Cloning $BRANCH. Roughly 2 GB and several minutes; ~4 GB on disk"
+    info "once the working tree is checked out."
     git clone "$REPO_URL" --branch "$BRANCH" --single-branch \
-        --filter=blob:none "$CLONE_DIR" 2>&1 | tee -a "$LOG_FILE"
+        --filter=blob:none --progress "$CLONE_DIR" 2>&1 | tee -a "$LOG_FILE"
 
     cd "$CLONE_DIR"
     ok "Source cloned to $CLONE_DIR"
@@ -565,10 +574,33 @@ configure_kernel() {
 
     cd "$CLONE_DIR"
 
-    # Start with current Fedora kernel config
+    # Start from the distro kernel config.
+    #
+    # The running kernel's own config is the obvious source, but `make install`
+    # does not write /boot/config-<kver>, so a kernel this script built has
+    # none. That made every rebuild-from-a-built-kernel dead-end here, which is
+    # the normal case once someone is using the thing. Fall back to the newest
+    # distro config still in /boot, which is what the first run started from.
+    local suffixes
+    suffixes="$(printf '%s\n' "${LOCALVERSION#-}" fairydust rgvx hdmifix \
+        | sort -u | paste -sd'|')"
+
     CURRENT_CONFIG="/boot/config-$(uname -r)"
     if [[ ! -f "$CURRENT_CONFIG" ]]; then
-        error "Cannot find current kernel config at $CURRENT_CONFIG"
+        info "No config for the running kernel at $CURRENT_CONFIG"
+        info "That is expected on a kernel this script built."
+        # -v sorts by version, so the tail is the newest. Configs belonging to
+        # our own builds are excluded: if one ever exists it is a derived
+        # config, not the distro baseline we want to start from.
+        CURRENT_CONFIG="$(ls -1v /boot/config-* 2>/dev/null \
+            | grep -Ev "$suffixes" | tail -1)"
+    fi
+
+    if [[ -z "$CURRENT_CONFIG" || ! -f "$CURRENT_CONFIG" ]]; then
+        error "No distro kernel config found in /boot.
+Expected /boot/config-\$(uname -r), or a distro kernel's config to fall back
+to. Install a stock kernel package, or copy a config to the source tree as
+$CLONE_DIR/.config and re-run."
     fi
 
     cp "$CURRENT_CONFIG" .config

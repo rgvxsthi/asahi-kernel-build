@@ -64,7 +64,7 @@ That is the entire fix: [`patches/0001-drm-apple-reconnect-DP2HDMI-output-on-res
 ## Requirements
 
 - **Fedora Asahi Remix** on Apple Silicon
-- **15 GB+ free disk space**
+- **15 GB+ free disk space** (~4 GB of that is the kernel source clone, which stays around for later rebuilds)
 - **1.5–3 hours** for the build (the script's own banner says 60–90 minutes; that estimate is optimistic on a laptop)
 - 16 GB RAM machines: pass `JOBS=6` or the build will thrash swap
 
