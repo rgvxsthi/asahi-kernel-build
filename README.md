@@ -137,7 +137,7 @@ Everything in `patches/*.patch` is applied in filename order after cloning and b
 | Patch | What it does |
 |---|---|
 | `0001-drm-apple-reconnect-DP2HDMI-output-on-resume.patch` | The HDMI-after-suspend fix described above |
-| `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
+| `0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch` | [BORE](https://github.com/firelzrd/bore-scheduler) scheduler, version 6.8.0, taken from upstream's `patches/testing`. Optional and opinionated — delete it if you don't want it. Runtime-tunable via `/proc/sys/kernel/sched_bore`. |
 | `0003-fairydust-usb-c-displayport-alt-mode.patch` | USB-C DisplayPort alt mode, for distros that build the release branch rather than `fairydust`. See below. |
 
 Patches are self-describing. Each carries `X-Summary` and `X-Who-Needs-It`
@@ -160,7 +160,7 @@ Each remaining patch is offered as its own prompt, defaulting to yes, so you can
     This is the point of this repo.
 Apply: Fixes the built-in HDMI port staying dark after suspend [Y/n]:
 
-    Optional and opinionated. Needs a 7.0 kernel and CONFIG_SCHED_BORE.
+    Optional and opinionated. Needs a 7.1 kernel and CONFIG_SCHED_BORE.
 Apply: BORE scheduler - keeps the desktop responsive under heavy load [Y/n]: n
 [INFO]  Skipped: 0002-sched-add-BORE-Burst-Oriented-Response-Enhancer.patch
 
@@ -188,15 +188,17 @@ On startup it asks which branch you want:
 
 | | Branch | Version | What it is |
 |---|---|---|---|
-| 1 | `fairydust` *(default)* | 7.0.13 | The main Asahi base plus experimental USB-C DisplayPort alt mode, so external displays over USB-C work. |
-| 2 | `asahi` | 7.0.13 | The main Asahi branch, and what Fedora Asahi Remix builds its kernel from. Same base, without the USB-C alt mode work. |
-| 3 | `asahi-wip` | 7.1.3 | Asahi's development branch. Newer and closer to upstream, less tested, no USB-C alt mode. |
+| 1 | `fairydust` *(default)* | 7.1.5 | The main Asahi base plus experimental USB-C DisplayPort alt mode, so external displays over USB-C work. |
+| 2 | `asahi` | 7.1.5 | The main Asahi branch, and what Fedora Asahi Remix builds its kernel from. Same base, without the USB-C alt mode work. |
+| 3 | `asahi-wip` | 7.1.5 | Asahi's development branch. Closer to upstream, less tested, no USB-C alt mode. |
+
+All three sat on 7.0.13 until upstream rebased them onto 7.1.5 in late July 2026. Fedora Asahi Remix lags the branch, so the kernel you are running now is probably still 7.0.x.
 
 **The HDMI suspend fix applies to all three** — `dcp.c` is identical on each, and the bug is present on all of them, including the stable `asahi` branch that most people are running.
 
-Pick `fairydust` if you drive a monitor over USB-C as well as HDMI. Pick `asahi` if you only use the built-in HDMI port and would rather stay on the branch Fedora Asahi Remix ships. Pick `asahi-wip` if you want the newer base and accept it is less tested.
+Pick `fairydust` if you drive a monitor over USB-C as well as HDMI. Pick `asahi` if you only use the built-in HDMI port and would rather stay on the branch Fedora Asahi Remix ships. Pick `asahi-wip` if you want to track upstream more closely and accept it is less tested.
 
-The BORE patch targets 7.0, so it applies to `asahi` and `fairydust` but not to `asahi-wip`. Decline it at the prompt if you pick option 3.
+The BORE patch targets 7.1 and currently applies to all three, since their scheduler sources are identical. That stops being true as soon as one of them rebases ahead of the others — the patch is then reported as skipped rather than failing the build.
 
 Skip the menu with `BRANCH=fairydust`, `BRANCH=asahi` or `BRANCH=asahi-wip`.
 
