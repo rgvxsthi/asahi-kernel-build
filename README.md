@@ -111,6 +111,8 @@ Your stock kernel is untouched and stays in GRUB — select it at boot. To remov
 
 It reads `LOCALVERSION`, `CLONE_DIR` and `ASSUME_YES` the same way the build script does, so export the same values you built with or it will not find what it is meant to remove.
 
+`ASSUME_YES=1` removes the kernel, modules and dtbs — all rebuildable — but deliberately leaves the source tree alone, because that is several GB that may hold uncommitted local changes. Add `REMOVE_SOURCE=1` to delete it too, or `REMOVE_SOURCE=0` to keep it without being asked.
+
 ## Configuration
 
 Most behaviour is environment-overridable:
@@ -122,7 +124,8 @@ Most behaviour is environment-overridable:
 | `CLONE_DIR` | `$HOME/linux-fairydust` | Where to clone |
 | `LOCALVERSION` | `-hdmifix` | Kernel name suffix / GRUB entry |
 | `JOBS` | `$(nproc)` | Parallel build jobs |
-| `ASSUME_YES` | `0` | Answer prompts automatically |
+| `ASSUME_YES` | `0` | Answer prompts automatically. Never deletes the source tree on its own — see `REMOVE_SOURCE` |
+| `REMOVE_SOURCE` | *(asks)* | Uninstaller only. `1` deletes the kernel source tree unattended, `0` keeps it without asking |
 | `NO_REBOOT` | `0` | Never reboot, even unattended |
 | `SKIP_PATCHES` | `0` | Build the branch unpatched |
 | `PATCHES` | *(asks)* | Comma-separated filename substrings, case-insensitive |

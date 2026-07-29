@@ -39,6 +39,24 @@ or set ASSUME_YES=1 to answer prompts automatically."
     [[ "$response" =~ ^[Yy]$ ]]
 }
 
+# Removing a kernel is recoverable: rebuild it. Removing the source tree is
+# not, because it may hold uncommitted local changes, and it is several GB that
+# nobody notices going missing until they look for it. So ASSUME_YES on its own
+# deliberately does NOT delete it. REMOVE_SOURCE=1 is the explicit opt-in,
+# REMOVE_SOURCE=0 the explicit opt-out.
+confirm_source_removal() {
+    case "${REMOVE_SOURCE:-}" in
+        1) info "$1 [REMOVE_SOURCE=1]"; return 0 ;;
+        0) info "Keeping the source tree (REMOVE_SOURCE=0)"; return 1 ;;
+    esac
+    if [[ "${ASSUME_YES:-0}" == "1" ]]; then
+        info "Keeping the source tree: ASSUME_YES does not delete it."
+        info "Pass REMOVE_SOURCE=1 to remove it in an unattended run."
+        return 1
+    fi
+    confirm "$1"
+}
+
 echo ""
 echo "============================================================"
 echo "  Asahi Linux Fairydust Kernel Uninstaller"
@@ -174,7 +192,7 @@ echo ""
 CLONE_DIR="${CLONE_DIR:-$HOME/linux-fairydust}"
 if [[ -d "$CLONE_DIR" ]]; then
     SOURCE_SIZE=$(du -sh "$CLONE_DIR" | awk '{print $1}')
-    if confirm "Remove kernel source tree at $CLONE_DIR ($SOURCE_SIZE)?"; then
+    if confirm_source_removal "Remove kernel source tree at $CLONE_DIR ($SOURCE_SIZE)?"; then
         rm -rf "$CLONE_DIR"
         ok "Source tree removed"
     else
@@ -186,7 +204,7 @@ fi
 if [[ -d "$HOME/linux" ]] && [[ -f "$HOME/linux/.config" ]]; then
     if grep -qE "$KVER_PATTERN" "$HOME/linux/.config" 2>/dev/null; then
         SOURCE_SIZE=$(du -sh "$HOME/linux" | awk '{print $1}')
-        if confirm "Found fairydust source at ~/linux ($SOURCE_SIZE). Remove?"; then
+        if confirm_source_removal "Found fairydust source at ~/linux ($SOURCE_SIZE). Remove?"; then
             rm -rf "$HOME/linux"
             ok "Source tree removed"
         fi
